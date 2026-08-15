@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../models/book.dart';
 import '../services/library_model.dart';
+import '../services/theme_notifier.dart';
 import '../widgets/book_card.dart';
 import 'add_edit_book_screen.dart';
 import 'book_detail_screen.dart';
@@ -34,6 +35,15 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
+  Tab _fittedTab(String label) {
+    return Tab(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(label, maxLines: 1),
+      ),
+    );
+  }
+
   List<Book> _filter(List<Book> books) {
     if (_query.trim().isEmpty) return books;
     final q = _query.toLowerCase();
@@ -52,10 +62,17 @@ class _HomeScreenState extends State<HomeScreen>
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
+    final themeNotifier = context.watch<ThemeNotifier>();
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Book Companion'),
         actions: [
+          IconButton(
+            icon: Icon(themeNotifier.icon),
+            tooltip: themeNotifier.label,
+            onPressed: () => context.read<ThemeNotifier>().cycle(),
+          ),
           IconButton(
             icon: const Icon(Icons.bar_chart),
             tooltip: 'Stats',
@@ -89,16 +106,19 @@ class _HomeScreenState extends State<HomeScreen>
         ],
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: true,
+          // Fixed (not scrollable) so all 4 tabs share the width evenly
+          // instead of overflowing and cutting the last one off.
+          isScrollable: false,
           tabs: [
-            Tab(text: 'To Read (${library.toRead.length})'),
-            Tab(text: 'Reading (${library.reading.length})'),
-            Tab(text: 'Read (${library.read.length})'),
-            Tab(text: 'Dropped (${library.dropped.length})'),
+            _fittedTab('Reading (${library.reading.length})'),
+            _fittedTab('To Read (${library.toRead.length})'),
+            _fittedTab('Read (${library.read.length})'),
+            _fittedTab('Dropped (${library.dropped.length})'),
           ],
         ),
       ),
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
@@ -117,8 +137,8 @@ class _HomeScreenState extends State<HomeScreen>
             child: TabBarView(
               controller: _tabController,
               children: [
-                _BookList(books: _filter(library.toRead)),
                 _BookList(books: _filter(library.reading)),
+                _BookList(books: _filter(library.toRead)),
                 _BookList(books: _filter(library.read)),
                 _BookList(books: _filter(library.dropped)),
               ],

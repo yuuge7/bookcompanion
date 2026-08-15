@@ -64,6 +64,7 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
       book.status = _status;
       book.coverImagePath = _coverPath;
       book.totalPages = totalPages;
+      _snapPagesToStatus(book, totalPages);
       await library.updateBook(book);
     } else {
       final book = Book(
@@ -74,9 +75,24 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
         coverImagePath: _coverPath,
         totalPages: totalPages,
       );
+      _snapPagesToStatus(book, totalPages);
       await library.addBook(book);
     }
     if (mounted) Navigator.pop(context);
+  }
+
+  /// Setting status to "To Read" zeroes out progress; setting it to "Read"
+  /// snaps progress to the last page. Only touches a session if one exists
+  /// to act on (the open one, or — for a manual "Read" override — the most
+  /// recent one).
+  void _snapPagesToStatus(Book book, int? totalPages) {
+    if (_status == BookStatus.toRead) {
+      final open = book.openSession;
+      if (open != null) open.currentPage = 0;
+    } else if (_status == BookStatus.read && totalPages != null) {
+      final target = book.openSession ?? (book.sessions.isEmpty ? null : book.sessions.last);
+      if (target != null) target.currentPage = totalPages;
+    }
   }
 
   @override

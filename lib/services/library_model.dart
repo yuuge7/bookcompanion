@@ -57,6 +57,8 @@ class LibraryModel extends ChangeNotifier {
   }
 
   /// Close the currently-open session with an end date and optional rating.
+  /// Finishing snaps the page count to the book's total (if known) — you
+  /// read the whole thing, so the progress should show that.
   Future<void> finishReading(
     Book book, {
     DateTime? endDate,
@@ -66,6 +68,9 @@ class LibraryModel extends ChangeNotifier {
     if (open == null) return;
     open.endDate = endDate ?? DateTime.now();
     open.rating = rating;
+    if (book.totalPages != null) {
+      open.currentPage = book.totalPages!;
+    }
     book.status = BookStatus.read;
     await updateBook(book);
   }
@@ -82,13 +87,19 @@ class LibraryModel extends ChangeNotifier {
   }
 
   Future<void> markDropped(Book book) async {
-    final open = book.openSession;
     // A dropped book keeps its open session as-is (no end date) so it's
     // clear the read was never completed.
     book.status = BookStatus.dropped;
     await updateBook(book);
-    // ignore: unnecessary_statements
-    open;
+  }
+
+  /// Explicitly move a book back to "To Read" (e.g. from the edit screen).
+  /// Resets progress on any open session to page 0.
+  Future<void> setToRead(Book book) async {
+    final open = book.openSession;
+    if (open != null) open.currentPage = 0;
+    book.status = BookStatus.toRead;
+    await updateBook(book);
   }
 
   Future<void> importReplace(List<Book> imported) async {
@@ -131,6 +142,19 @@ class LibraryModel extends ChangeNotifier {
 
   int get totalRereads => _books.fold(
       0, (sum, b) => sum + (b.timesRead > 1 ? b.timesRead - 1 : 0));
+
+  /// Each completed read adds a book's full page count (so rereading a
+  /// book three times adds its pages three times); a book you're
+  /// currently partway through adds its live current page on top.
+  /// Recomputed from _books every time, so deleting a book removes its
+  /// pages from this total automatically.
+  int get totalPagesRead {
+    return _books.fold(0, (sum, b) {
+      final completed = (b.totalPages ?? 0) * b.timesRead;
+      final inProgress = b.openSession?.currentPage ?? 0;
+      return sum + completed + inProgress;
+    });
+  }
 
   double? get averageRating {
     final rated = _books

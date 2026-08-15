@@ -12,6 +12,7 @@ class StatsScreen extends StatelessWidget {
 
     final stats = <(String, String)>[
       ('Books read', '${library.totalBooksRead}'),
+      ('Pages read', '${library.totalPagesRead}'),
       ('Total completed reads', '${library.totalSessionsCompleted}'),
       ('Rereads', '${library.totalRereads}'),
       (

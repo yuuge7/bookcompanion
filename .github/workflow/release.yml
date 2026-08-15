@@ -1,0 +1,90 @@
+name: Release
+
+# Builds a signed release APK and publishes it as a new GitHub Release
+# every time a normal push lands on main. The version-bump commit this
+# workflow makes includes "[skip ci]", which GitHub uses to skip the run
+# it would otherwise trigger — so it bumps once per real push, not twice.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: "Book Companion"
+
+jobs:
+  release:
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump version in pubspec.yaml
+        id: bump
+        run: |
+          CURRENT=$(grep -m1 '^version:' pubspec.yaml | awk '{print $2}')
+          BASE="${CURRENT%%+*}"
+          BUILD="${CURRENT##*+}"
+          MAJOR=$(echo "$BASE" | cut -d. -f1)
+          MINOR=$(echo "$BASE" | cut -d. -f2)
+          NEW_MINOR=$((MINOR + 1))
+          NEW_BUILD=$((BUILD + 1))
+          NEW_VERSION="${MAJOR}.${NEW_MINOR}.0+${NEW_BUILD}"
+          TAG="v${MAJOR}.${NEW_MINOR}"
+          sed -i "s/^version: .*/version: ${NEW_VERSION}/" pubspec.yaml
+          echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Commit version bump
+        run: |
+          git config user.name "release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          git add pubspec.yaml
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.tag }} [skip ci]"
+          git push
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      # The keystore and its passwords never live in the repo — only a
+      # base64 copy sits in encrypted GitHub secrets. See README.md
+      # ("Signing key") for how these secrets were created.
+      - name: Decode signing key
+        run: echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > book_companion_release.keystore
+
+      - name: Write key.properties
+        run: |
+          cat > android/key.properties <<EOF
+          storePassword=${{ secrets.KEYSTORE_PASSWORD }}
+          keyPassword=${{ secrets.KEY_PASSWORD }}
+          keyAlias=${{ secrets.KEY_ALIAS }}
+          storeFile=../../book_companion_release.keystore
+          EOF
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.bump.outputs.tag }}
+          name: "${{ env.APP_NAME }} ${{ steps.bump.outputs.tag }}"
+          files: build/app/outputs/flutter-apk/app-release.apk

@@ -153,11 +153,15 @@ class BookDetailScreen extends StatelessWidget {
   }
 
   Future<void> _startSession(BuildContext context, Book book) async {
+    // Every date here is normalized to midnight (date-only). Mixing a
+    // date-only value with DateTime.now()'s time-of-day is what made the
+    // end-date picker reject "today" as out of range on same-day sessions.
+    final today = DateUtils.dateOnly(DateTime.now());
     final picked = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
+      initialDate: today,
       firstDate: DateTime(1900),
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      lastDate: today.add(const Duration(days: 1)),
       helpText: 'Start date',
     );
     if (picked == null || !context.mounted) return;
@@ -168,11 +172,18 @@ class BookDetailScreen extends StatelessWidget {
     final open = book.openSession;
     if (open == null) return;
 
+    final today = DateUtils.dateOnly(DateTime.now());
+    final startDay = DateUtils.dateOnly(open.startDate);
+    // Guard against the start date ever landing after "today" (clock
+    // changes, timezone edge cases) so firstDate can never be after
+    // initialDate/lastDate below.
+    final firstSelectable = startDay.isAfter(today) ? today : startDay;
+
     final endDate = await showDatePicker(
       context: context,
-      initialDate: DateTime.now(),
-      firstDate: open.startDate,
-      lastDate: DateTime.now().add(const Duration(days: 1)),
+      initialDate: today,
+      firstDate: firstSelectable,
+      lastDate: today.add(const Duration(days: 1)),
       helpText: 'End date',
     );
     if (endDate == null || !context.mounted) return;
