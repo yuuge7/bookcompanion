@@ -1,0 +1,26 @@
+name: book_companion
+description: Personal Android book tracker. Data lives on-device only.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  provider: ^6.1.2           # simple state management for the library model
+  path_provider: ^2.1.2      # find on-device app storage folder
+  file_picker: ^8.0.0        # pick a JSON file to import, or a folder to export to
+  image_picker: ^1.1.1       # pick a cover image from gallery
+  intl: ^0.19.0              # date formatting
+  uuid: ^4.4.0                # generate ids for books/sessions
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
