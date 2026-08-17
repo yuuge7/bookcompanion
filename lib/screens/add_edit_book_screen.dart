@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/book.dart';
+import '../models/reading_session.dart';
 import '../services/library_model.dart';
 
 class AddEditBookScreen extends StatefulWidget {
@@ -22,6 +24,8 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
   late final TextEditingController _pagesController;
   late BookStatus _status;
   String? _coverPath;
+  DateTime? _startDate;
+  DateTime? _endDate;
 
   bool get _isEditing => widget.book != null;
 
@@ -34,6 +38,9 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
         TextEditingController(text: widget.book?.totalPages?.toString() ?? '');
     _status = widget.book?.status ?? BookStatus.toRead;
     _coverPath = widget.book?.coverImagePath;
+    final lastSession = widget.book?.sessions.isEmpty ?? true ? null : widget.book?.sessions.last;
+    _startDate = lastSession?.startDate ?? DateUtils.dateOnly(DateTime.now());
+    _endDate = lastSession?.endDate ?? DateUtils.dateOnly(DateTime.now());
   }
 
   @override
@@ -64,7 +71,7 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
       book.status = _status;
       book.coverImagePath = _coverPath;
       book.totalPages = totalPages;
-      _snapPagesToStatus(book, totalPages);
+      _syncSessionsWithStatus(book, totalPages);
       await library.updateBook(book);
     } else {
       final book = Book(
@@ -75,23 +82,42 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
         coverImagePath: _coverPath,
         totalPages: totalPages,
       );
-      _snapPagesToStatus(book, totalPages);
+      _syncSessionsWithStatus(book, totalPages);
       await library.addBook(book);
     }
     if (mounted) Navigator.pop(context);
   }
 
-  /// Setting status to "To Read" zeroes out progress; setting it to "Read"
-  /// snaps progress to the last page. Only touches a session if one exists
-  /// to act on (the open one, or — for a manual "Read" override — the most
-  /// recent one).
-  void _snapPagesToStatus(Book book, int? totalPages) {
+  void _syncSessionsWithStatus(Book book, int? totalPages) {
     if (_status == BookStatus.toRead) {
+      book.sessions.removeWhere((s) => s.isOpen);
+    } else if (_status == BookStatus.reading) {
+      if (book.openSession == null) {
+        book.sessions.add(ReadingSession(
+          id: const Uuid().v4(),
+          startDate: _startDate ?? DateUtils.dateOnly(DateTime.now()),
+        ));
+      } else {
+        book.openSession!.startDate = _startDate ?? DateUtils.dateOnly(DateTime.now());
+      }
+    } else if (_status == BookStatus.read) {
       final open = book.openSession;
-      if (open != null) open.currentPage = 0;
-    } else if (_status == BookStatus.read && totalPages != null) {
-      final target = book.openSession ?? (book.sessions.isEmpty ? null : book.sessions.last);
-      if (target != null) target.currentPage = totalPages;
+      if (open != null) {
+        open.startDate = _startDate ?? open.startDate;
+        open.endDate = _endDate ?? DateUtils.dateOnly(DateTime.now());
+        if (totalPages != null) open.currentPage = totalPages;
+      } else if (book.sessions.isEmpty) {
+        book.sessions.add(ReadingSession(
+          id: const Uuid().v4(),
+          startDate: _startDate ?? DateUtils.dateOnly(DateTime.now()),
+        )..endDate = _endDate ?? DateUtils.dateOnly(DateTime.now())
+         ..currentPage = totalPages ?? 0);
+      } else {
+        final last = book.sessions.last;
+        last.startDate = _startDate ?? last.startDate;
+        last.endDate = _endDate ?? DateUtils.dateOnly(DateTime.now());
+        if (totalPages != null) last.currentPage = totalPages;
+      }
     }
   }
 
@@ -155,6 +181,38 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
                   .toList(),
               onChanged: (v) => setState(() => _status = v ?? _status),
             ),
+            if (_status == BookStatus.reading || _status == BookStatus.read)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Start Date'),
+                subtitle: Text(DateFormat.yMMMd().format(_startDate!)),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _startDate!,
+                    firstDate: DateTime(1900),
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) setState(() => _startDate = picked);
+                },
+              ),
+            if (_status == BookStatus.read)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('End Date'),
+                subtitle: Text(DateFormat.yMMMd().format(_endDate!)),
+                trailing: const Icon(Icons.calendar_today),
+                onTap: () async {
+                  final picked = await showDatePicker(
+                    context: context,
+                    initialDate: _endDate!,
+                    firstDate: _startDate!,
+                    lastDate: DateTime.now(),
+                  );
+                  if (picked != null) setState(() => _endDate = picked);
+                },
+              ),
             const SizedBox(height: 24),
             FilledButton(onPressed: _save, child: const Text('Save')),
           ],

@@ -128,14 +128,7 @@ class BookDetailScreen extends StatelessWidget {
               buttonLabel: book.timesRead == 0 ? 'Start reading' : 'Start reread',
               onPressed: () => _startSession(context, book),
             ),
-          if (open == null && book.timesRead > 0 && book.status != BookStatus.dropped)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: TextButton(
-                onPressed: () => context.read<LibraryModel>().markDropped(book),
-                child: const Text('Mark as dropped'),
-              ),
-            ),
+
           const SizedBox(height: 24),
           Text('Reading history', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -145,7 +138,7 @@ class BookDetailScreen extends StatelessWidget {
             ...finishedSessions.asMap().entries.map((entry) {
               final index = finishedSessions.length - entry.key; // 1-based, most recent = highest
               final s = entry.value;
-              return _SessionTile(readNumber: index, session: s, dateFmt: dateFmt);
+              return _SessionTile(book: book, readNumber: index, session: s, dateFmt: dateFmt);
             }),
         ],
       ),
@@ -222,11 +215,12 @@ class _ActionCard extends StatelessWidget {
 }
 
 class _SessionTile extends StatelessWidget {
+  final Book book;
   final int readNumber;
   final ReadingSession session;
   final DateFormat dateFmt;
 
-  const _SessionTile({required this.readNumber, required this.session, required this.dateFmt});
+  const _SessionTile({required this.book, required this.readNumber, required this.session, required this.dateFmt});
 
   @override
   Widget build(BuildContext context) {
@@ -244,6 +238,22 @@ class _SessionTile extends StatelessWidget {
               ],
             )
           : null,
+      onTap: () async {
+        final range = await showDateRangePicker(
+          context: context,
+          initialDateRange: DateTimeRange(
+            start: session.startDate,
+            end: session.endDate ?? session.startDate,
+          ),
+          firstDate: DateTime(1900),
+          lastDate: DateTime.now(),
+        );
+        if (range != null && context.mounted) {
+          session.startDate = range.start;
+          session.endDate = range.end;
+          await context.read<LibraryModel>().updateBook(book);
+        }
+      },
     );
   }
 }

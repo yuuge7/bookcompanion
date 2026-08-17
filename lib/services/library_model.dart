@@ -94,10 +94,9 @@ class LibraryModel extends ChangeNotifier {
   }
 
   /// Explicitly move a book back to "To Read" (e.g. from the edit screen).
-  /// Resets progress on any open session to page 0.
+  /// Removes any open session since the book is no longer being read.
   Future<void> setToRead(Book book) async {
-    final open = book.openSession;
-    if (open != null) open.currentPage = 0;
+    book.sessions.removeWhere((s) => s.isOpen);
     book.status = BookStatus.toRead;
     await updateBook(book);
   }
