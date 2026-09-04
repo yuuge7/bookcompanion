@@ -18,9 +18,11 @@ class ThemeNotifier extends ChangeNotifier {
         ThemeMode.dark => 'Theme: Dark',
       };
 
+  // Outlined glyphs: the brightness_auto starburst read as a logo
+  // sitting next to the app title.
   IconData get icon => switch (mode) {
-        ThemeMode.system => Icons.brightness_auto,
-        ThemeMode.light => Icons.light_mode,
-        ThemeMode.dark => Icons.dark_mode,
+        ThemeMode.system => Icons.settings_brightness_outlined,
+        ThemeMode.light => Icons.light_mode_outlined,
+        ThemeMode.dark => Icons.dark_mode_outlined,
       };
 }

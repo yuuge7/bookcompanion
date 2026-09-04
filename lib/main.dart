@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'services/library_model.dart';
 import 'services/theme_notifier.dart';
 import 'screens/home_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   runApp(const BookCompanionApp());
@@ -24,17 +25,8 @@ class BookCompanionApp extends StatelessWidget {
           title: 'Book Companion',
           debugShowCheckedModeBanner: false,
           themeMode: themeNotifier.mode,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.teal,
-              brightness: Brightness.dark,
-            ),
-            useMaterial3: true,
-          ),
+          theme: AppTheme.light(),
+          darkTheme: AppTheme.dark(),
           home: const HomeScreen(),
         ),
       ),

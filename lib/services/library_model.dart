@@ -7,22 +7,37 @@ import 'storage_service.dart';
 
 const _uuid = Uuid();
 
+/// What came of an import attempt, so the screen can say the right thing.
+enum ImportResult { replaced, cancelled, unreadable }
+
 class LibraryModel extends ChangeNotifier {
   final StorageService _storage = StorageService();
   List<Book> _books = [];
   bool loading = true;
 
+  /// Set when the saved library exists but can't be read. While it is set
+  /// the model refuses to write, so a bad parse can never overwrite the
+  /// file it failed to read.
+  bool loadFailed = false;
+
   List<Book> get books => List.unmodifiable(_books);
 
   Future<void> load() async {
     loading = true;
+    loadFailed = false;
     notifyListeners();
-    _books = await _storage.loadBooks();
+    try {
+      _books = await _storage.loadBooks();
+    } catch (_) {
+      _books = [];
+      loadFailed = true;
+    }
     loading = false;
     notifyListeners();
   }
 
   Future<void> _persist() async {
+    if (loadFailed) return;
     await _storage.saveBooks(_books);
     notifyListeners();
   }
@@ -107,12 +122,21 @@ class LibraryModel extends ChangeNotifier {
   }
 
   /// Convenience wrapper used by the UI: pick a file and replace the
-  /// library in one step. Returns false if the user cancelled.
-  Future<bool> importFromFile() async {
-    final imported = await _storage.importBooks();
-    if (imported == null) return false;
+  /// library in one step. The screen turns the result into copy — it
+  /// never shows the underlying exception.
+  Future<ImportResult> importFromFile() async {
+    final List<Book>? imported;
+    try {
+      imported = await _storage.importBooks();
+    } catch (_) {
+      return ImportResult.unreadable;
+    }
+    if (imported == null) return ImportResult.cancelled;
+    // A successful import replaces an unreadable file, so writing is safe
+    // again.
+    loadFailed = false;
     await importReplace(imported);
-    return true;
+    return ImportResult.replaced;
   }
 
   Future<String?> export() => _storage.exportBooks(_books);

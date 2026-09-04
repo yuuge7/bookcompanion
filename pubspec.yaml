@@ -29,4 +29,13 @@ flutter:
 flutter_launcher_icons:
   android: "ic_launcher"
   ios: false
-  image_path: "assets/icon/app_icon.jpg"
+  # Adaptive layers, so every Android 8+ launcher masks the icon itself
+  # instead of shrinking a square PNG onto a white plate — which is what
+  # Motorola, Pixel, Samsung and OnePlus all did with the old config.
+  # The layers are generated from assets/icon/app_icon.jpg by
+  # tool/make_icons.py; regenerate them if the source art changes.
+  image_path: "assets/icon/app_icon_legacy.png"
+  adaptive_icon_background: "assets/icon/app_icon_background.png"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  adaptive_icon_monochrome: "assets/icon/app_icon_monochrome.png"
+  min_sdk_android: 21
