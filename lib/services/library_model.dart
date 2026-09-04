@@ -102,9 +102,11 @@ class LibraryModel extends ChangeNotifier {
     DateTime? startDate,
     DateTime? endDate,
     required int? rating,
+    DatePrecision? precision,
   }) async {
     if (startDate != null) session.startDate = startDate;
     if (endDate != null) session.endDate = endDate;
+    if (precision != null) session.precision = precision;
     session.rating = rating;
     await updateBook(book);
   }

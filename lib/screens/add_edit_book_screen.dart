@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
@@ -12,6 +11,7 @@ import '../models/reading_session.dart';
 import '../services/library_model.dart';
 import '../theme/tokens.dart';
 import '../widgets/ledger.dart';
+import '../widgets/read_dates.dart';
 
 class AddEditBookScreen extends StatefulWidget {
   const AddEditBookScreen({super.key, this.book});
@@ -32,6 +32,8 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
   String? _coverPath;
   DateTime? _startDate;
   DateTime? _endDate;
+  DatePrecision _precision = DatePrecision.exact;
+  int? _rating;
   String? _coverError;
 
   bool get _isEditing => widget.book != null;
@@ -49,6 +51,8 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
     final lastSession = sessions.isEmpty ? null : sessions.last;
     _startDate = lastSession?.startDate ?? DateUtils.dateOnly(DateTime.now());
     _endDate = lastSession?.endDate ?? DateUtils.dateOnly(DateTime.now());
+    _precision = lastSession?.precision ?? DatePrecision.exact;
+    _rating = lastSession?.rating;
   }
 
   @override
@@ -114,30 +118,32 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
         book.sessions.add(ReadingSession(
           id: const Uuid().v4(),
           startDate: _startDate ?? DateUtils.dateOnly(DateTime.now()),
+          precision: _precision,
         ));
       } else {
-        book.openSession!.startDate =
-            _startDate ?? DateUtils.dateOnly(DateTime.now());
+        book.openSession!
+          ..startDate = _startDate ?? DateUtils.dateOnly(DateTime.now())
+          ..precision = _precision;
       }
     } else if (_status == BookStatus.read) {
-      final open = book.openSession;
-      if (open != null) {
-        open.startDate = _startDate ?? open.startDate;
-        open.endDate = _endDate ?? DateUtils.dateOnly(DateTime.now());
-        if (totalPages != null) open.currentPage = totalPages;
-      } else if (book.sessions.isEmpty) {
-        book.sessions.add(ReadingSession(
-          id: const Uuid().v4(),
-          startDate: _startDate ?? DateUtils.dateOnly(DateTime.now()),
-        )
-          ..endDate = _endDate ?? DateUtils.dateOnly(DateTime.now())
-          ..currentPage = totalPages ?? 0);
-      } else {
-        final last = book.sessions.last;
-        last.startDate = _startDate ?? last.startDate;
-        last.endDate = _endDate ?? DateUtils.dateOnly(DateTime.now());
-        if (totalPages != null) last.currentPage = totalPages;
-      }
+      final today = DateUtils.dateOnly(DateTime.now());
+      // Whichever session this status lands on, it carries the dates, the
+      // precision and the rating the form was showing.
+      final target = book.openSession ??
+          (book.sessions.isEmpty ? null : book.sessions.last);
+      final session = target ??
+          (ReadingSession(
+            id: const Uuid().v4(),
+            startDate: _startDate ?? today,
+          )..currentPage = totalPages ?? 0);
+      if (target == null) book.sessions.add(session);
+
+      session
+        ..startDate = _startDate ?? session.startDate
+        ..endDate = _endDate ?? today
+        ..precision = _precision
+        ..rating = _rating;
+      if (totalPages != null) session.currentPage = totalPages;
     }
   }
 
@@ -202,57 +208,75 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
             const SizedBox(height: Space.block),
             const SectionHeading('shelf'),
             const SizedBox(height: Space.step),
-            _StatusPicker(
+            SegmentedChoice<BookStatus>(
+              values: BookStatus.values,
               value: _status,
+              labelOf: (s) => s.label,
               onChanged: (s) => setState(() => _status = s),
             ),
             const SizedBox(height: Space.snug),
             Text(
               _statusHelp(_status),
-              style:
-                  Theme.of(context).textTheme.bodySmall?.copyWith(color: c.inkMuted),
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: c.inkMuted),
             ),
             if (wantsStart) ...[
+              const SizedBox(height: Space.block),
+              const SectionHeading('dates'),
               const SizedBox(height: Space.step),
-              _DateRow(
-                label: 'Started',
-                value: _startDate!,
-                onPick: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: _startDate!,
-                    firstDate: DateTime(1900),
-                    lastDate: DateUtils.dateOnly(DateTime.now()),
-                    helpText: 'Started on',
-                  );
-                  if (picked != null) {
-                    setState(() {
-                      _startDate = picked;
-                      if (_endDate != null && _endDate!.isBefore(picked)) {
-                        _endDate = picked;
-                      }
-                    });
-                  }
-                },
+              // A book finished years ago rarely has exact days attached to
+              // it, and a guessed day is worse than saying it is not known.
+              SegmentedChoice<DatePrecision>(
+                values: DatePrecision.values,
+                value: _precision,
+                labelOf: (p) => p.label,
+                onChanged: _changePrecision,
               ),
+              const SizedBox(height: Space.snug),
+              Text(
+                _precisionHelp(_precision),
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: c.inkMuted),
+              ),
+              if (_precision != DatePrecision.unknown) ...[
+                const SizedBox(height: Space.step),
+                _DateRow(
+                  label: 'Started',
+                  value: _startDate!,
+                  precision: _precision,
+                  onPick: () => _pickStart(context),
+                ),
+                if (_status == BookStatus.read) ...[
+                  const SizedBox(height: Space.snug),
+                  _DateRow(
+                    label: 'Finished',
+                    value: _endDate!,
+                    precision: _precision,
+                    onPick: () => _pickEnd(context),
+                  ),
+                ],
+              ],
             ],
             if (_status == BookStatus.read) ...[
+              const SizedBox(height: Space.block),
+              const SectionHeading('rating'),
+              const SizedBox(height: Space.tight),
+              Text(
+                'Optional, and it belongs to this read alone — a reread can '
+                'score differently.',
+                style: Theme.of(context)
+                    .textTheme
+                    .bodySmall
+                    ?.copyWith(color: c.inkMuted),
+              ),
               const SizedBox(height: Space.snug),
-              _DateRow(
-                label: 'Finished',
-                value: _endDate!,
-                onPick: () async {
-                  final picked = await showDatePicker(
-                    context: context,
-                    initialDate: _endDate!.isBefore(_startDate!)
-                        ? _startDate!
-                        : _endDate!,
-                    firstDate: _startDate!,
-                    lastDate: DateUtils.dateOnly(DateTime.now()),
-                    helpText: 'Finished on',
-                  );
-                  if (picked != null) setState(() => _endDate = picked);
-                },
+              StarRating(
+                value: _rating,
+                onChanged: (v) => setState(() => _rating = v),
               ),
             ],
             const SizedBox(height: Space.block),
@@ -268,6 +292,58 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
       ),
     );
   }
+
+  /// Switching precision re-snaps the dates, so an approximate read never
+  /// keeps the stray day someone happened to tap.
+  void _changePrecision(DatePrecision next) {
+    setState(() {
+      _precision = next;
+      if (next == DatePrecision.approximate) {
+        _startDate = snapToMonthStart(_startDate!);
+        _endDate = snapToMonthEnd(_endDate!);
+      }
+    });
+  }
+
+  Future<void> _pickStart(BuildContext context) async {
+    final approximate = _precision == DatePrecision.approximate;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate!,
+      firstDate: DateTime(1900),
+      lastDate: DateUtils.dateOnly(DateTime.now()),
+      helpText: approximate ? 'Started — any day that month' : 'Started on',
+    );
+    if (picked == null) return;
+    setState(() {
+      _startDate = approximate ? snapToMonthStart(picked) : picked;
+      if (_endDate != null && _endDate!.isBefore(_startDate!)) {
+        _endDate = approximate ? snapToMonthEnd(picked) : picked;
+      }
+    });
+  }
+
+  Future<void> _pickEnd(BuildContext context) async {
+    final approximate = _precision == DatePrecision.approximate;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate!.isBefore(_startDate!) ? _startDate! : _endDate!,
+      firstDate: _startDate!,
+      lastDate: DateUtils.dateOnly(DateTime.now()),
+      helpText: approximate ? 'Finished — any day that month' : 'Finished on',
+    );
+    if (picked == null) return;
+    setState(() => _endDate = approximate ? snapToMonthEnd(picked) : picked);
+  }
+
+  String _precisionHelp(DatePrecision precision) => switch (precision) {
+        DatePrecision.exact => 'You know the days.',
+        DatePrecision.approximate =>
+          'Only the month is kept. Use this for a read you can place in a '
+              'month or a span of months but not on a day.',
+        DatePrecision.unknown =>
+          'No dates are kept. The read still counts towards your totals.',
+      };
 
   String _statusHelp(BookStatus status) => switch (status) {
         BookStatus.toRead =>
@@ -420,81 +496,23 @@ class _Field extends StatelessWidget {
   }
 }
 
-/// Four shelves, all visible. A dropdown hides three of them behind a tap
-/// and is the stock Material control besides.
-class _StatusPicker extends StatelessWidget {
-  const _StatusPicker({required this.value, required this.onChanged});
-
-  final BookStatus value;
-  final ValueChanged<BookStatus> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.c;
-    return Container(
-      decoration: BoxDecoration(
-        color: c.well,
-        borderRadius: Radii.field,
-        border: Border.all(color: c.rule),
-      ),
-      padding: const EdgeInsets.all(3),
-      child: Row(
-        children: BookStatus.values.map((status) {
-          final selected = status == value;
-          return Expanded(
-            child: Semantics(
-              button: true,
-              selected: selected,
-              label: status.label,
-              excludeSemantics: true,
-              child: InkWell(
-                onTap: () => onChanged(status),
-                borderRadius: Radii.chip,
-                child: Container(
-                  // 46 + the 3px inset either side clears the 48px target.
-                  height: 46,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: selected ? c.panel : Colors.transparent,
-                    borderRadius: Radii.chip,
-                    border: Border.all(
-                      color: selected ? c.ruleStrong : Colors.transparent,
-                    ),
-                  ),
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Meta(
-                      status.label.toLowerCase(),
-                      size: 11,
-                      color: selected ? c.ink : c.inkMuted,
-                      weight: selected ? FontWeight.w700 : null,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }).toList(),
-      ),
-    );
-  }
-}
-
 class _DateRow extends StatelessWidget {
   const _DateRow({
     required this.label,
     required this.value,
+    required this.precision,
     required this.onPick,
   });
 
   final String label;
   final DateTime value;
+  final DatePrecision precision;
   final VoidCallback onPick;
 
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    final formatted = DateFormat('d MMM yyyy').format(value);
+    final formatted = dateAtPrecision(value, precision);
 
     return Semantics(
       button: true,
@@ -518,7 +536,7 @@ class _DateRow extends StatelessWidget {
               Expanded(child: Container(height: 1, color: c.rule)),
               const SizedBox(width: Space.step),
               Meta(
-                formatted.toLowerCase(),
+                formatted,
                 color: c.ink,
                 size: 13,
                 weight: FontWeight.w600,

@@ -8,8 +8,12 @@ Inspired by [mangacompanion](https://github.com/yuuge7/mangacompanion), adapted 
 
 - **To Read / Reading / Read / Dropped** tabs with live counts
 - Reading tracked as a **list of sessions** — a reread adds a new entry instead of overwriting history, so the full read/reread timeline stays visible
-- Start and end date per session
-- Optional 1–5 star rating per read (rate a reread differently from the first read)
+- Start and end date per session, at a precision you choose: **exact** days,
+  **approximate** (month only, and it may span months), or **unknown** — an old
+  read with no remembered dates still counts, without a guessed day attached
+- Optional 1–5 star rating per read (rate a reread differently from the first
+  read), set when you finish, on the add/edit screen, or later from the book's
+  reading history
 - Page progress, typed in directly — no +/- stepper
 - Light / dark / system theme, toggled from the app bar
 - Stats screen: books read, pages read, completed reads, rereads, average rating
@@ -23,12 +27,17 @@ Book
  ├─ title, author, coverImagePath, status, totalPages
  └─ sessions: [ReadingSession]
      ├─ startDate
-     ├─ endDate   (null while the session is in progress)
-     ├─ rating    (optional, set on finish)
-     └─ currentPage
+     ├─ endDate    (null while the session is in progress)
+     ├─ rating     (optional, 1–5)
+     ├─ currentPage
+     └─ precision  (exact | approximate | unknown)
 ```
 
 `timesRead` is the number of sessions with an `endDate`. A book with `timesRead > 1` has been reread; every session's dates and rating stay visible on the book's detail screen.
+
+`precision` says how far the dates can be trusted. `startDate` and `endDate` are always set, because `endDate == null` is what marks a read as still open — a finished read with no remembered dates still has to close. When `precision` is not `exact` the stored days are placeholders that the app never shows: only the month is displayed for `approximate`, and nothing at all for `unknown`, and `daysTaken` reports no duration rather than inventing one.
+
+Exports written before `precision` existed load as `exact`, which is what they were — it was the only kind the app could record.
 
 ## Getting started
 

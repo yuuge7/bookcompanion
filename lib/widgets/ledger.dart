@@ -142,6 +142,82 @@ class RatingPips extends StatelessWidget {
   }
 }
 
+/// A row of mutually exclusive choices, all of them visible.
+///
+/// Used for a book's shelf and for how well its dates are known. A dropdown
+/// would hide every option but one behind a tap, and bring back the stock
+/// Material control this design replaced.
+class SegmentedChoice<T> extends StatelessWidget {
+  const SegmentedChoice({
+    super.key,
+    required this.values,
+    required this.value,
+    required this.labelOf,
+    required this.onChanged,
+  });
+
+  final List<T> values;
+  final T value;
+  final String Function(T) labelOf;
+  final ValueChanged<T> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Container(
+      decoration: BoxDecoration(
+        color: c.well,
+        borderRadius: Radii.field,
+        border: Border.all(color: c.rule),
+      ),
+      padding: const EdgeInsets.all(3),
+      child: Row(
+        children: values.map((option) {
+          final selected = option == value;
+          final label = labelOf(option);
+          return Expanded(
+            child: Semantics(
+              button: true,
+              selected: selected,
+              label: label,
+              excludeSemantics: true,
+              child: InkWell(
+                onTap: () => onChanged(option),
+                borderRadius: Radii.chip,
+                child: Container(
+                  // 46 + the 3px inset either side clears the 48px target.
+                  height: 46,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: selected ? c.panel : Colors.transparent,
+                    borderRadius: Radii.chip,
+                    border: Border.all(
+                      color: selected ? c.ruleStrong : Colors.transparent,
+                    ),
+                  ),
+                  // The label needs room inside the segment: in a dialog
+                  // the segments are narrow enough that a scaled-down label
+                  // otherwise sits flush against the border.
+                  padding: const EdgeInsets.symmetric(horizontal: Space.snug),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Meta(
+                      label.toLowerCase(),
+                      size: 11,
+                      color: selected ? c.ink : c.inkMuted,
+                      weight: selected ? FontWeight.w700 : null,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
 /// Rating input. Keeps the familiar five-star shape, but in ink — a second
 /// bright colour would compete with the spine, which is the only thing on
 /// screen allowed to be the accent.

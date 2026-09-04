@@ -1,7 +1,6 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 
 import '../models/book.dart';
@@ -10,6 +9,7 @@ import '../services/library_model.dart';
 import '../theme/tokens.dart';
 import '../widgets/book_row.dart' show plateLetterFor;
 import '../widgets/ledger.dart';
+import '../widgets/read_dates.dart';
 import '../widgets/set_page_dialog.dart';
 import '../widgets/spine.dart';
 import 'add_edit_book_screen.dart';
@@ -171,6 +171,13 @@ class _Identity extends StatelessWidget {
     final c = context.c;
     final t = Theme.of(context).textTheme;
     final avg = book.averageRating;
+    final facts = <String>[
+      if (book.totalPages != null) '${book.totalPages} pages',
+      if (avg != null)
+        book.timesRead > 1
+            ? '${avg.toStringAsFixed(1)} avg over ${book.timesRead} reads'
+            : 'rated ${avg.toStringAsFixed(1)}',
+    ];
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -217,15 +224,10 @@ class _Identity extends StatelessWidget {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   StatusTag(book.status.label.toLowerCase()),
-                  if (book.totalPages != null)
-                    Meta('${book.totalPages} pages'),
-                  if (avg != null)
-                    Meta(
-                      book.timesRead > 1
-                          ? '${avg.toStringAsFixed(1)} avg over '
-                              '${book.timesRead} reads'
-                          : 'rated ${avg.toStringAsFixed(1)}',
-                    ),
+                  // One string with its own separators: as separate Wrap
+                  // children these facts sat a single space apart and read
+                  // as one run-on phrase.
+                  if (facts.isNotEmpty) Meta(facts.join('  ·  '), maxLines: 2),
                 ],
               ),
             ],
@@ -249,8 +251,7 @@ class _OpenRead extends StatelessWidget {
     final total = book.totalPages;
     final fraction =
         (total != null && total > 0) ? session.currentPage / total : null;
-    final started =
-        DateFormat('d MMM yyyy').format(session.startDate).toLowerCase();
+    final exact = session.precision == DatePrecision.exact;
     final days = DateTime.now().difference(session.startDate).inDays + 1;
 
     return Panel(
@@ -266,7 +267,7 @@ class _OpenRead extends StatelessWidget {
                   color: c.inkMuted,
                 ),
               ),
-              Meta('day $days'),
+              if (exact) Meta('day $days'),
             ],
           ),
           const SizedBox(height: Space.step),
@@ -302,7 +303,7 @@ class _OpenRead extends StatelessWidget {
             _ProgressRule(value: fraction.clamp(0, 1).toDouble()),
           ],
           const SizedBox(height: Space.step),
-          Meta('started $started'),
+          Meta(startedPhrase(session, short: false)),
           const SizedBox(height: Space.gutter),
           Row(
             children: [
@@ -453,13 +454,10 @@ class _SessionEntry extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    final fmt = DateFormat('d MMM yyyy');
-    final days = session.daysTaken;
 
     return Semantics(
       button: true,
-      label: 'Read $readNumber, ${fmt.format(session.startDate)} to '
-          '${fmt.format(session.endDate!)}, '
+      label: 'Read $readNumber, ${readSpan(session)}, '
           '${session.rating == null ? 'not rated' : 'rated ${session.rating} '
               'out of 5'}. Edit this read.',
       excludeSemantics: true,
@@ -491,20 +489,9 @@ class _SessionEntry extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Meta(
-                      '${fmt.format(session.startDate).toLowerCase()}'
-                      '  →  '
-                      '${fmt.format(session.endDate!).toLowerCase()}',
-                      color: c.ink,
-                      size: 12,
-                    ),
+                    Meta(readSpan(session), color: c.ink, size: 12),
                     const SizedBox(height: Space.tight),
-                    Meta(
-                      days == null
-                          ? 'dates only'
-                          : '$days day${days == 1 ? '' : 's'}',
-                      size: 11,
-                    ),
+                    Meta(readSpanNote(session), size: 11),
                   ],
                 ),
               ),
@@ -537,16 +524,18 @@ class _SessionEntry extends StatelessWidget {
       startDate: result.start,
       endDate: result.end,
       rating: result.rating,
+      precision: result.precision,
     );
   }
 }
 
 /// What came back from the read editor.
 class _ReadEdit {
-  const _ReadEdit(this.start, this.end, this.rating);
+  const _ReadEdit(this.start, this.end, this.rating, this.precision);
   final DateTime start;
   final DateTime end;
   final int? rating;
+  final DatePrecision precision;
 }
 
 /// Edits one finished read. Rating lives here rather than only in the
@@ -566,28 +555,43 @@ class _EditReadDialogState extends State<_EditReadDialog> {
   late DateTime _end =
       DateUtils.dateOnly(widget.session.endDate ?? widget.session.startDate);
   late int? _rating = widget.session.rating;
+  late DatePrecision _precision = widget.session.precision;
 
   Future<void> _pickDates() async {
+    final approximate = _precision == DatePrecision.approximate;
     final today = DateUtils.dateOnly(DateTime.now());
     final range = await showDateRangePicker(
       context: context,
       initialDateRange: DateTimeRange(start: _start, end: _end),
       firstDate: DateTime(1900),
       lastDate: today,
-      helpText: 'Read ${widget.readNumber}',
+      helpText: approximate
+          ? 'Read ${widget.readNumber} — any day in each month'
+          : 'Read ${widget.readNumber}',
       saveText: 'Use these dates',
     );
     if (range == null) return;
     setState(() {
-      _start = range.start;
-      _end = range.end;
+      _start = approximate ? snapToMonthStart(range.start) : range.start;
+      _end = approximate ? snapToMonthEnd(range.end) : range.end;
+    });
+  }
+
+  /// Switching to approximate re-snaps to whole months, so no stray day
+  /// survives the change.
+  void _changePrecision(DatePrecision next) {
+    setState(() {
+      _precision = next;
+      if (next == DatePrecision.approximate) {
+        _start = snapToMonthStart(_start);
+        _end = snapToMonthEnd(_end);
+      }
     });
   }
 
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    final fmt = DateFormat('d MMM yyyy');
     final days = _end.difference(_start).inDays + 1;
 
     return AlertDialog(
@@ -615,51 +619,76 @@ class _EditReadDialogState extends State<_EditReadDialog> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Semantics(
-            button: true,
-            label: 'Dates, ${fmt.format(_start)} to ${fmt.format(_end)}. '
-                'Change dates.',
-            excludeSemantics: true,
-            child: InkWell(
-              onTap: _pickDates,
-              borderRadius: Radii.field,
-              child: Container(
-                width: double.infinity,
-                constraints: const BoxConstraints(minHeight: kTapTarget),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: Space.step,
-                  vertical: Space.snug,
-                ),
-                decoration: BoxDecoration(
-                  color: c.well,
-                  borderRadius: Radii.field,
-                  border: Border.all(color: c.rule),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Meta(
-                            '${fmt.format(_start).toLowerCase()}  →  '
-                            '${fmt.format(_end).toLowerCase()}',
-                            color: c.ink,
-                            size: 12,
-                          ),
-                          const SizedBox(height: 2),
-                          Meta('$days day${days == 1 ? '' : 's'}', size: 11),
-                        ],
+          const Meta('dates'),
+          const SizedBox(height: Space.tight),
+          SegmentedChoice<DatePrecision>(
+            values: DatePrecision.values,
+            value: _precision,
+            labelOf: (p) => p.label,
+            onChanged: _changePrecision,
+          ),
+          if (_precision == DatePrecision.unknown) ...[
+            const SizedBox(height: Space.snug),
+            Text(
+              'No dates are kept for this read. It still counts towards your '
+              'totals.',
+              style: Theme.of(context)
+                  .textTheme
+                  .bodySmall
+                  ?.copyWith(color: c.inkMuted),
+            ),
+          ] else ...[
+            const SizedBox(height: Space.snug),
+            Semantics(
+              button: true,
+              label: 'Dates, ${readSpanOf(_start, _end, _precision)}. '
+                  'Change dates.',
+              excludeSemantics: true,
+              child: InkWell(
+                onTap: _pickDates,
+                borderRadius: Radii.field,
+                child: Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(minHeight: kTapTarget),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: Space.step,
+                    vertical: Space.snug,
+                  ),
+                  decoration: BoxDecoration(
+                    color: c.well,
+                    borderRadius: Radii.field,
+                    border: Border.all(color: c.rule),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Meta(
+                              readSpanOf(_start, _end, _precision),
+                              color: c.ink,
+                              size: 12,
+                            ),
+                            const SizedBox(height: 2),
+                            Meta(
+                              _precision == DatePrecision.approximate
+                                  ? 'month only'
+                                  : '$days day${days == 1 ? '' : 's'}',
+                              size: 11,
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: Space.snug),
-                    Icon(Icons.event_outlined, size: 16, color: c.inkMuted),
-                  ],
+                      const SizedBox(width: Space.snug),
+                      Icon(Icons.event_outlined, size: 16, color: c.inkMuted),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
           const SizedBox(height: Space.gutter),
           const Meta('rating'),
           const SizedBox(height: Space.tight),
@@ -682,7 +711,7 @@ class _EditReadDialogState extends State<_EditReadDialog> {
         ),
         FilledButton(
           onPressed: () =>
-              Navigator.pop(context, _ReadEdit(_start, _end, _rating)),
+              Navigator.pop(context, _ReadEdit(_start, _end, _rating, _precision)),
           child: const Text('Save read'),
         ),
       ],

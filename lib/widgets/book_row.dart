@@ -1,11 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 
 import '../models/book.dart';
+import '../models/reading_session.dart';
 import '../theme/tokens.dart';
 import 'ledger.dart';
+import 'read_dates.dart';
 import 'spine.dart';
 
 /// One line of the log.
@@ -120,7 +121,7 @@ String metaLine(Book book) {
       if (total != null && total > 0) {
         parts.add('${((open.currentPage / total) * 100).round()}%');
       }
-      parts.add('started ${_shortDate(open.startDate)}');
+      parts.add(startedPhrase(open));
 
     case BookStatus.toRead:
       if (book.timesRead > 0) parts.add(again);
@@ -129,36 +130,31 @@ String metaLine(Book book) {
       );
 
     case BookStatus.read:
-      final last = book.lastFinished;
-      if (last == null) return 'finished';
+      final closed = book.sessions.where((s) => s.endDate != null).toList()
+        ..sort((a, b) => b.endDate!.compareTo(a.endDate!));
+      if (closed.isEmpty) return 'finished';
+      final last = closed.first;
       if (book.isReread) parts.add(again);
-      parts.add('finished ${_shortDate(last)}');
-      if (!book.isReread) {
-        // How long it took only fits alongside the date on a single read;
-        // a reread spends that room on the count instead.
-        final closed = book.sessions.where((s) => s.endDate != null).toList()
-          ..sort((a, b) => b.endDate!.compareTo(a.endDate!));
-        final days = closed.first.daysTaken;
-        if (days != null) parts.add('$days day${days == 1 ? '' : 's'}');
+      parts.add(finishedPhrase(last));
+      // How long it took only fits alongside the date on a single read, and
+      // only when the days are known at all.
+      if (!book.isReread && last.daysTaken != null) {
+        final days = last.daysTaken!;
+        parts.add('$days day${days == 1 ? '' : 's'}');
       }
 
     case BookStatus.dropped:
       if (book.timesRead > 0) parts.add(again);
       if (open != null && open.currentPage > 0) {
         parts.add('stopped at p. ${open.currentPage}');
-        parts.add(_shortDate(open.startDate));
+        if (open.precision != DatePrecision.unknown) {
+          parts.add(dateAtPrecision(open.startDate, open.precision));
+        }
       } else {
         parts.add('dropped');
       }
   }
   return parts.join(' · ');
-}
-
-String _shortDate(DateTime d) {
-  final fmt = d.year == DateTime.now().year
-      ? DateFormat('d MMM')
-      : DateFormat('d MMM yyyy');
-  return fmt.format(d).toLowerCase();
 }
 
 /// How far the user has turned text up, capped so a fixed-width control
