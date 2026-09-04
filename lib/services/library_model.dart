@@ -90,6 +90,25 @@ class LibraryModel extends ChangeNotifier {
     await updateBook(book);
   }
 
+  /// Change a read after the fact — its dates, its rating, or both.
+  ///
+  /// A rating used to be writable only in the moment a read was closed, so
+  /// skipping it once put it out of reach for good, and a book marked read
+  /// from the edit screen or restored from an import could never be rated
+  /// at all. Passing a null [rating] clears it.
+  Future<void> editSession(
+    Book book,
+    ReadingSession session, {
+    DateTime? startDate,
+    DateTime? endDate,
+    required int? rating,
+  }) async {
+    if (startDate != null) session.startDate = startDate;
+    if (endDate != null) session.endDate = endDate;
+    session.rating = rating;
+    await updateBook(book);
+  }
+
   /// Set the current page directly (typed in, not stepped with +/-).
   Future<void> updatePage(Book book, int page) async {
     final open = book.openSession;

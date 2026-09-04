@@ -142,6 +142,48 @@ class RatingPips extends StatelessWidget {
   }
 }
 
+/// Rating input. Keeps the familiar five-star shape, but in ink — a second
+/// bright colour would compete with the spine, which is the only thing on
+/// screen allowed to be the accent.
+///
+/// Tapping the star that is already selected clears the rating, so a read
+/// can be un-rated without a separate control.
+class StarRating extends StatelessWidget {
+  const StarRating({super.key, required this.value, required this.onChanged});
+
+  final int? value;
+  final ValueChanged<int?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(5, (i) {
+            final star = i + 1;
+            final on = value != null && star <= value!;
+            final clears = value == star;
+            return IconButton(
+              icon: Icon(on ? Icons.star : Icons.star_border, size: 26),
+              color: on ? c.ink : c.inkFaint,
+              tooltip: clears ? 'Clear rating' : '$star out of 5',
+              onPressed: () => onChanged(clears ? null : star),
+            );
+          }),
+        ),
+        Meta(
+          value == null ? 'not rated' : '$value of 5',
+          size: 11,
+          color: value == null ? c.inkFaint : c.inkMuted,
+        ),
+      ],
+    );
+  }
+}
+
 /// A section marker: label on the left, a rule running out to the edge.
 /// The rule shows where the section reaches, which is information; a bare
 /// bold heading is not.

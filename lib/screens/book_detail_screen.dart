@@ -459,10 +459,12 @@ class _SessionEntry extends StatelessWidget {
     return Semantics(
       button: true,
       label: 'Read $readNumber, ${fmt.format(session.startDate)} to '
-          '${fmt.format(session.endDate!)}. Edit dates.',
+          '${fmt.format(session.endDate!)}, '
+          '${session.rating == null ? 'not rated' : 'rated ${session.rating} '
+              'out of 5'}. Edit this read.',
       excludeSemantics: true,
       child: InkWell(
-        onTap: () => _editDates(context),
+        onTap: () => _editRead(context),
         child: Container(
           constraints: const BoxConstraints(minHeight: kTapTarget),
           padding: const EdgeInsets.symmetric(vertical: Space.step),
@@ -506,10 +508,15 @@ class _SessionEntry extends StatelessWidget {
                   ],
                 ),
               ),
-              if (session.rating != null) ...[
-                const SizedBox(width: Space.snug),
-                RatingPips(rating: session.rating!),
-              ],
+              const SizedBox(width: Space.snug),
+              // The unrated case has to show something, or there is no sign
+              // a rating can be given at all.
+              if (session.rating != null)
+                RatingPips(rating: session.rating!)
+              else
+                Meta('not rated', size: 11, color: c.inkFaint),
+              const SizedBox(width: Space.snug),
+              Icon(Icons.edit_outlined, size: 15, color: c.inkFaint),
             ],
           ),
         ),
@@ -517,30 +524,174 @@ class _SessionEntry extends StatelessWidget {
     );
   }
 
-  Future<void> _editDates(BuildContext context) async {
+  Future<void> _editRead(BuildContext context) async {
     final library = context.read<LibraryModel>();
-    final today = DateUtils.dateOnly(DateTime.now());
-    final range = await showDateRangePicker(
+    final result = await showDialog<_ReadEdit>(
       context: context,
-      initialDateRange: DateTimeRange(
-        start: DateUtils.dateOnly(session.startDate),
-        end: DateUtils.dateOnly(session.endDate ?? session.startDate),
-      ),
-      firstDate: DateTime(1900),
-      lastDate: today,
-      helpText: 'Read $readNumber',
-      saveText: 'Save dates',
+      builder: (_) => _EditReadDialog(session: session, readNumber: readNumber),
     );
-    if (range == null) return;
-    session.startDate = range.start;
-    session.endDate = range.end;
-    await library.updateBook(book);
+    if (result == null) return;
+    await library.editSession(
+      book,
+      session,
+      startDate: result.start,
+      endDate: result.end,
+      rating: result.rating,
+    );
   }
 }
 
-/// Rating input keeps the familiar five-star shape, but in ink — a second
-/// bright colour would compete with the spine, which is the only thing on
-/// screen allowed to be the accent.
+/// What came back from the read editor.
+class _ReadEdit {
+  const _ReadEdit(this.start, this.end, this.rating);
+  final DateTime start;
+  final DateTime end;
+  final int? rating;
+}
+
+/// Edits one finished read. Rating lives here rather than only in the
+/// finish flow, so skipping it at the time is no longer permanent.
+class _EditReadDialog extends StatefulWidget {
+  const _EditReadDialog({required this.session, required this.readNumber});
+
+  final ReadingSession session;
+  final int readNumber;
+
+  @override
+  State<_EditReadDialog> createState() => _EditReadDialogState();
+}
+
+class _EditReadDialogState extends State<_EditReadDialog> {
+  late DateTime _start = DateUtils.dateOnly(widget.session.startDate);
+  late DateTime _end =
+      DateUtils.dateOnly(widget.session.endDate ?? widget.session.startDate);
+  late int? _rating = widget.session.rating;
+
+  Future<void> _pickDates() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final range = await showDateRangePicker(
+      context: context,
+      initialDateRange: DateTimeRange(start: _start, end: _end),
+      firstDate: DateTime(1900),
+      lastDate: today,
+      helpText: 'Read ${widget.readNumber}',
+      saveText: 'Use these dates',
+    );
+    if (range == null) return;
+    setState(() {
+      _start = range.start;
+      _end = range.end;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.c;
+    final fmt = DateFormat('d MMM yyyy');
+    final days = _end.difference(_start).inDays + 1;
+
+    return AlertDialog(
+      titlePadding: const EdgeInsets.fromLTRB(
+        Space.block,
+        Space.block,
+        Space.block,
+        0,
+      ),
+      contentPadding: const EdgeInsets.fromLTRB(
+        Space.block,
+        Space.step,
+        Space.block,
+        0,
+      ),
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Meta('read ${widget.readNumber}', size: 11),
+          const SizedBox(height: Space.tight),
+          const Text('Edit this read'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Semantics(
+            button: true,
+            label: 'Dates, ${fmt.format(_start)} to ${fmt.format(_end)}. '
+                'Change dates.',
+            excludeSemantics: true,
+            child: InkWell(
+              onTap: _pickDates,
+              borderRadius: Radii.field,
+              child: Container(
+                width: double.infinity,
+                constraints: const BoxConstraints(minHeight: kTapTarget),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Space.step,
+                  vertical: Space.snug,
+                ),
+                decoration: BoxDecoration(
+                  color: c.well,
+                  borderRadius: Radii.field,
+                  border: Border.all(color: c.rule),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Meta(
+                            '${fmt.format(_start).toLowerCase()}  →  '
+                            '${fmt.format(_end).toLowerCase()}',
+                            color: c.ink,
+                            size: 12,
+                          ),
+                          const SizedBox(height: 2),
+                          Meta('$days day${days == 1 ? '' : 's'}', size: 11),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: Space.snug),
+                    Icon(Icons.event_outlined, size: 16, color: c.inkMuted),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: Space.gutter),
+          const Meta('rating'),
+          const SizedBox(height: Space.tight),
+          StarRating(
+            value: _rating,
+            onChanged: (v) => setState(() => _rating = v),
+          ),
+        ],
+      ),
+      actionsPadding: const EdgeInsets.fromLTRB(
+        Space.gutter,
+        Space.step,
+        Space.gutter,
+        Space.gutter,
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          onPressed: () =>
+              Navigator.pop(context, _ReadEdit(_start, _end, _rating)),
+          child: const Text('Save read'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Offered when a read is closed. Skipping here is no longer permanent —
+/// the read can be rated later from the reading history.
 class _RatingDialog extends StatefulWidget {
   const _RatingDialog();
 
@@ -563,23 +714,17 @@ class _RatingDialogState extends State<_RatingDialog> {
         children: [
           Text(
             'Optional, and it belongs to this read alone — a reread can score '
-            'differently.',
-            style:
-                Theme.of(context).textTheme.bodyMedium?.copyWith(color: c.inkMuted),
+            'differently. You can set or change it later from the reading '
+            'history.',
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(color: c.inkMuted),
           ),
           const SizedBox(height: Space.step),
-          Row(
-            mainAxisSize: MainAxisSize.min,
-            children: List.generate(5, (i) {
-              final value = i + 1;
-              final on = _rating != null && value <= _rating!;
-              return IconButton(
-                icon: Icon(on ? Icons.star : Icons.star_border, size: 26),
-                color: on ? c.ink : c.inkFaint,
-                tooltip: '$value out of 5',
-                onPressed: () => setState(() => _rating = value),
-              );
-            }),
+          StarRating(
+            value: _rating,
+            onChanged: (v) => setState(() => _rating = v),
           ),
         ],
       ),
