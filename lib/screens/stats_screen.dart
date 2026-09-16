@@ -6,8 +6,8 @@ import '../services/library_model.dart';
 import '../theme/tokens.dart';
 import '../widgets/ledger.dart';
 
-/// The totals, read as a ledger: labels on the left, figures on the right,
-/// a rule running between them so the eye lands on the right column. Two
+/// The totals, read as a ledger: labels on the left, figures flush right,
+/// a hairline under each row so the eye tracks across to the figure. Two
 /// figures get to be large — the ones a reader actually quotes.
 class StatsScreen extends StatelessWidget {
   const StatsScreen({super.key});
@@ -132,13 +132,19 @@ class _Line extends StatelessWidget {
     return Semantics(
       label: '$label: $value',
       excludeSemantics: true,
+      // A full-width hairline under each row instead of a leader between
+      // label and figure: a leader started wherever the label ended and
+      // stopped short of the figure, so no two rules lined up.
       child: Container(
         constraints: const BoxConstraints(minHeight: 46),
         alignment: Alignment.center,
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: c.rule)),
+        ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
-            Flexible(
+            Expanded(
               child: Text(
                 label,
                 maxLines: 2,
@@ -146,24 +152,16 @@ class _Line extends StatelessWidget {
               ),
             ),
             const SizedBox(width: Space.step),
-            Expanded(child: Container(height: 1, color: c.rule)),
-            const SizedBox(width: Space.step),
-            // A fixed figure column, right-aligned: letting the value float
-            // after the leader put every number at a different x.
-            SizedBox(
-              width: 76,
-              child: Text(
-                value,
-                textAlign: TextAlign.right,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontFamily: Faces.utility,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w700,
-                  color: c.ink,
-                  fontFeatures: kTabular,
-                ),
+            Text(
+              value,
+              textAlign: TextAlign.right,
+              maxLines: 1,
+              style: TextStyle(
+                fontFamily: Faces.utility,
+                fontSize: 15,
+                fontWeight: FontWeight.w700,
+                color: c.ink,
+                fontFeatures: kTabular,
               ),
             ),
           ],
