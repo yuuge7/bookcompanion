@@ -45,18 +45,20 @@ class BookRow extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(
-            Space.gutter,
-            14,
-            Space.step,
-            14,
-          ),
+          padding: const EdgeInsets.fromLTRB(Space.gutter, 14, Space.step, 14),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Spine(book: book, height: _coverHeight, width: 12),
               const SizedBox(width: Space.snug),
-              _Cover(book: book, width: _coverWidth, height: _coverHeight),
+              Hero(
+                tag: 'cover-${book.id}',
+                child: _Cover(
+                  book: book,
+                  width: _coverWidth,
+                  height: _coverHeight,
+                ),
+              ),
               const SizedBox(width: Space.gutter),
               Expanded(
                 child: Column(
@@ -107,7 +109,7 @@ class BookRow extends StatelessWidget {
 /// the line never repeats what the page stamp already shows.
 String metaLine(Book book) {
   final open = book.openSession;
-  final total = book.totalPages;
+  final total = book.progressTotal;
   final parts = <String>[];
   final again = 'read ${book.timesRead}x';
 
@@ -126,7 +128,9 @@ String metaLine(Book book) {
     case BookStatus.toRead:
       if (book.timesRead > 0) parts.add(again);
       parts.add(
-        total != null && total > 0 ? '$total pages' : 'page count not set',
+        total != null && total > 0
+            ? '${book.progressLabel(total)} ${book.isAudio ? 'hours' : 'pages'}'
+            : 'length not set',
       );
 
     case BookStatus.read:
@@ -143,10 +147,12 @@ String metaLine(Book book) {
         parts.add('$days day${days == 1 ? '' : 's'}');
       }
 
+    case BookStatus.onHold:
+      parts.add('paused at ${book.progressLabel(open?.currentPage ?? 0)}');
     case BookStatus.dropped:
       if (book.timesRead > 0) parts.add(again);
       if (open != null && open.currentPage > 0) {
-        parts.add('stopped at p. ${open.currentPage}');
+        parts.add('stopped at ${book.progressLabel(open.currentPage)}');
         if (open.precision != DatePrecision.unknown) {
           parts.add(dateAtPrecision(open.startDate, open.precision));
         }
@@ -175,13 +181,12 @@ class _PageStamp extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.c;
     final page = book.openSession?.currentPage ?? 0;
-    final total = book.totalPages;
+    final total = book.progressTotal;
 
     return Semantics(
       button: true,
-      label: total != null
-          ? 'Set current page, now $page of $total'
-          : 'Set current page, now $page',
+      label:
+          'Set ${book.isAudio ? 'listening time' : 'current page'}, now ${book.progressLabel(page)}',
       excludeSemantics: true,
       child: InkWell(
         onTap: onTap,
@@ -200,7 +205,7 @@ class _PageStamp extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                '$page',
+                book.progressLabel(page),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
@@ -214,7 +219,11 @@ class _PageStamp extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Meta(
-                total != null ? '/$total' : 'page',
+                total != null
+                    ? '/${book.progressLabel(total)}'
+                    : book.isAudio
+                    ? 'h:mm'
+                    : 'page',
                 size: 11,
                 color: c.inkMuted,
               ),

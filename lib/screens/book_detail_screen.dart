@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,8 @@ import 'package:provider/provider.dart';
 import '../models/book.dart';
 import '../models/reading_session.dart';
 import '../services/library_model.dart';
+import '../services/theme_notifier.dart';
+import '../services/reading_stats.dart';
 import '../theme/tokens.dart';
 import '../widgets/book_row.dart' show plateLetterFor;
 import '../widgets/ledger.dart';
@@ -13,16 +16,39 @@ import '../widgets/read_dates.dart';
 import '../widgets/set_page_dialog.dart';
 import '../widgets/spine.dart';
 import 'add_edit_book_screen.dart';
+import 'book_extras.dart';
 
 /// One book, and every pass you have made through it.
 ///
 /// The history is the reason this app exists, so it is a real timeline —
 /// numbered from the first read, running down the page with the most
 /// recent at the top — rather than a list of identical rows.
-class BookDetailScreen extends StatelessWidget {
-  const BookDetailScreen({super.key, required this.bookId});
+class BookDetailScreen extends StatefulWidget {
+  const BookDetailScreen({
+    super.key,
+    required this.bookId,
+    this.updateProgress = false,
+  });
 
   final String bookId;
+  final bool updateProgress;
+  @override
+  State<BookDetailScreen> createState() => _BookDetailScreenState();
+}
+
+class _BookDetailScreenState extends State<BookDetailScreen> {
+  String get bookId => widget.bookId;
+  @override
+  void initState() {
+    super.initState();
+    if (widget.updateProgress) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final book = context.read<LibraryModel>().byId(bookId);
+        if (book != null) unawaited(showSetPageDialog(context, book));
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,7 +60,8 @@ class BookDetailScreen extends StatelessWidget {
         appBar: AppBar(),
         body: ErrorState(
           headline: 'That book is gone',
-          body: 'It was deleted, or the library was replaced by an import '
+          body:
+              'It was deleted, or the library was replaced by an import '
               'while this screen was open.',
           actionLabel: 'Back to library',
           onAction: () => Navigator.of(context).pop(),
@@ -54,7 +81,9 @@ class BookDetailScreen extends StatelessWidget {
             icon: const Icon(Icons.edit_outlined),
             tooltip: 'Edit book',
             onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => AddEditBookScreen(book: book)),
+              MaterialPageRoute<void>(
+                builder: (_) => AddEditBookScreen(book: book),
+              ),
             ),
           ),
           IconButton(
@@ -74,6 +103,19 @@ class BookDetailScreen extends StatelessWidget {
         ),
         children: [
           _Identity(book: book),
+          const SizedBox(height: 16),
+          DropdownButtonFormField<BookStatus>(
+            isExpanded: true,
+            key: ValueKey('status-${book.status.name}'),
+            initialValue: book.status,
+            decoration: const InputDecoration(labelText: 'Move to shelf'),
+            items: BookStatus.values
+                .map((s) => DropdownMenuItem(value: s, child: Text(s.label)))
+                .toList(),
+            onChanged: (s) {
+              if (s != null) unawaited(library.setStatus(book, s));
+            },
+          ),
           const SizedBox(height: Space.block),
           if (open != null)
             _OpenRead(book: book, session: open)
@@ -95,13 +137,12 @@ class BookDetailScreen extends StatelessWidget {
               child: Text(
                 open == null
                     ? 'No finished reads yet. Start one above and it will be '
-                        'logged here when you close it.'
+                          'logged here when you close it.'
                     : 'This read is still open. It joins the history once you '
-                        'finish it.',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodyMedium
-                    ?.copyWith(color: context.c.inkMuted),
+                          'finish it.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodyMedium?.copyWith(color: context.c.inkMuted),
               ),
             )
           else
@@ -120,6 +161,7 @@ class BookDetailScreen extends StatelessWidget {
                 readNumber: history.length - index,
               );
             }),
+          BookExtras(book: book),
         ],
       ),
     );
@@ -128,14 +170,14 @@ class BookDetailScreen extends StatelessWidget {
   Future<void> _confirmDelete(BuildContext context, Book book) async {
     final library = context.read<LibraryModel>();
     final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Delete this book?'),
         content: Text(
           '"${book.title}" and all ${book.timesRead} logged '
-          'read${book.timesRead == 1 ? '' : 's'} go with it. This cannot be '
-          'undone.',
+          'read${book.timesRead == 1 ? '' : 's'} move to trash for 30 days. You can restore it in Settings.',
         ),
         actions: [
           TextButton(
@@ -154,8 +196,18 @@ class BookDetailScreen extends StatelessWidget {
       ),
     );
     if (confirmed != true) return;
-    await library.deleteBook(book.id);
-    navigator.pop();
+    if (await library.deleteBook(book.id)) {
+      navigator.pop();
+      messenger.showSnackBar(
+        SnackBar(
+          content: const Text('Book moved to trash.'),
+          action: SnackBarAction(
+            label: 'Undo',
+            onPressed: () => library.restoreBook(book.id),
+          ),
+        ),
+      );
+    }
   }
 }
 
@@ -172,7 +224,8 @@ class _Identity extends StatelessWidget {
     final t = Theme.of(context).textTheme;
     final avg = book.averageRating;
     final facts = <String>[
-      if (book.totalPages != null) '${book.totalPages} pages',
+      if (book.progressTotal != null)
+        '${book.progressLabel(book.progressTotal!)} ${book.isAudio ? 'hours' : 'pages'}',
       if (avg != null)
         book.timesRead > 1
             ? '${avg.toStringAsFixed(1)} avg over ${book.timesRead} reads'
@@ -184,27 +237,31 @@ class _Identity extends StatelessWidget {
       children: [
         Spine(book: book, height: 116, width: 13),
         const SizedBox(width: Space.step),
-        SizedBox(
-          width: 80,
-          height: 116,
-          child: ClipRRect(
-            borderRadius: Radii.cover,
-            child: book.coverImagePath != null &&
-                    File(book.coverImagePath!).existsSync()
-                ? Image.file(File(book.coverImagePath!), fit: BoxFit.cover)
-                : Container(
-                    color: c.plate,
-                    alignment: Alignment.center,
-                    child: Text(
-                      plateLetterFor(book.title),
-                      style: TextStyle(
-                        fontFamily: Faces.display,
-                        fontSize: 28,
-                        fontWeight: FontWeight.w700,
-                        color: c.inkFaint,
+        Hero(
+          tag: 'cover-${book.id}',
+          child: SizedBox(
+            width: 80,
+            height: 116,
+            child: ClipRRect(
+              borderRadius: Radii.cover,
+              child:
+                  book.coverImagePath != null &&
+                      File(book.coverImagePath!).existsSync()
+                  ? Image.file(File(book.coverImagePath!), fit: BoxFit.cover)
+                  : Container(
+                      color: c.plate,
+                      alignment: Alignment.center,
+                      child: Text(
+                        plateLetterFor(book.title),
+                        style: TextStyle(
+                          fontFamily: Faces.display,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w700,
+                          color: c.inkFaint,
+                        ),
                       ),
                     ),
-                  ),
+            ),
           ),
         ),
         const SizedBox(width: Space.gutter),
@@ -248,11 +305,12 @@ class _OpenRead extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.c;
-    final total = book.totalPages;
-    final fraction =
-        (total != null && total > 0) ? session.currentPage / total : null;
+    final total = book.progressTotal;
+    final fraction = (total != null && total > 0)
+        ? session.currentPage / total
+        : null;
     final exact = session.precision == DatePrecision.exact;
-    final days = DateTime.now().difference(session.startDate).inDays + 1;
+    final days = calendarDaysBetween(DateTime.now(), session.startDate) + 1;
 
     return Panel(
       padding: const EdgeInsets.all(Space.gutter),
@@ -276,7 +334,7 @@ class _OpenRead extends StatelessWidget {
             textBaseline: TextBaseline.alphabetic,
             children: [
               Text(
-                '${session.currentPage}',
+                book.progressLabel(session.currentPage),
                 style: TextStyle(
                   fontFamily: Faces.utility,
                   fontSize: 32,
@@ -287,7 +345,14 @@ class _OpenRead extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: Space.snug),
-              Meta(total != null ? 'of $total pages' : 'pages in', size: 13),
+              Flexible(
+                child: Meta(
+                  total != null
+                      ? 'of ${book.progressLabel(total)} ${book.isAudio ? 'hours' : 'pages'}'
+                      : book.progressUnit,
+                  size: 13,
+                ),
+              ),
               const Spacer(),
               if (fraction != null)
                 Meta(
@@ -310,7 +375,7 @@ class _OpenRead extends StatelessWidget {
               Expanded(
                 child: FilledButton(
                   onPressed: () => showSetPageDialog(context, book),
-                  child: const Text('Set page'),
+                  child: Text(book.isAudio ? 'Set time' : 'Set page'),
                 ),
               ),
               const SizedBox(width: Space.step),
@@ -337,13 +402,17 @@ class _OpenRead extends StatelessWidget {
     final startDay = DateUtils.dateOnly(session.startDate);
     final firstSelectable = startDay.isAfter(today) ? today : startDay;
 
-    final endDate = await showDatePicker(
-      context: context,
-      initialDate: today,
-      firstDate: firstSelectable,
-      lastDate: today.add(const Duration(days: 1)),
-      helpText: 'Finished on',
-    );
+    final endDate = session.precision == DatePrecision.unknown
+        ? today
+        : await showDatePicker(
+            context: context,
+            initialDate: today,
+            firstDate: firstSelectable,
+            lastDate: today.add(const Duration(days: 1)),
+            helpText: session.precision == DatePrecision.approximate
+                ? 'Finished — any day that month'
+                : 'Finished on',
+          );
     if (endDate == null || !context.mounted) return;
 
     final rating = await showDialog<int?>(
@@ -352,7 +421,13 @@ class _OpenRead extends StatelessWidget {
     );
     if (!context.mounted) return;
 
-    await library.finishReading(book, endDate: endDate, rating: rating);
+    await library.finishReading(
+      book,
+      endDate: session.precision == DatePrecision.approximate
+          ? snapToMonthEnd(endDate)
+          : endDate,
+      rating: rating,
+    );
   }
 }
 
@@ -376,7 +451,7 @@ class _ClosedRead extends StatelessWidget {
           Text(
             started
                 ? 'Starting again opens a new session. The reads below stay '
-                    'exactly as they are.'
+                      'exactly as they are.'
                 : 'Pick the day you started and this book moves to Reading.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
@@ -395,7 +470,12 @@ class _ClosedRead extends StatelessWidget {
 
   Future<void> _start(BuildContext context) async {
     final library = context.read<LibraryModel>();
+    final precision = context.read<ThemeNotifier>().defaultPrecision;
     final today = DateUtils.dateOnly(DateTime.now());
+    if (precision == DatePrecision.unknown) {
+      await library.startReading(book, startDate: today, precision: precision);
+      return;
+    }
     final picked = await showDatePicker(
       context: context,
       initialDate: today,
@@ -404,7 +484,13 @@ class _ClosedRead extends StatelessWidget {
       helpText: 'Started on',
     );
     if (picked == null) return;
-    await library.startReading(book, startDate: picked);
+    await library.startReading(
+      book,
+      startDate: precision == DatePrecision.approximate
+          ? snapToMonthStart(picked)
+          : picked,
+      precision: precision,
+    );
   }
 }
 
@@ -428,10 +514,7 @@ class _ProgressRule extends StatelessWidget {
           duration: Motion.fill,
           curve: Motion.curve,
           width: constraints.maxWidth * value,
-          decoration: BoxDecoration(
-            color: c.accent,
-            borderRadius: Radii.chip,
-          ),
+          decoration: BoxDecoration(color: c.accent, borderRadius: Radii.chip),
         ),
       ),
     );
@@ -457,9 +540,10 @@ class _SessionEntry extends StatelessWidget {
 
     return Semantics(
       button: true,
-      label: 'Read $readNumber, ${readSpan(session)}, '
+      label:
+          'Read $readNumber, ${readSpan(session)}, '
           '${session.rating == null ? 'not rated' : 'rated ${session.rating} '
-              'out of 5'}. Edit this read.',
+                    'out of 5'}. Edit this read.',
       excludeSemantics: true,
       child: InkWell(
         onTap: () => _editRead(context),
@@ -552,8 +636,9 @@ class _EditReadDialog extends StatefulWidget {
 
 class _EditReadDialogState extends State<_EditReadDialog> {
   late DateTime _start = DateUtils.dateOnly(widget.session.startDate);
-  late DateTime _end =
-      DateUtils.dateOnly(widget.session.endDate ?? widget.session.startDate);
+  late DateTime _end = DateUtils.dateOnly(
+    widget.session.endDate ?? widget.session.startDate,
+  );
   late int? _rating = widget.session.rating;
   late DatePrecision _precision = widget.session.precision;
 
@@ -562,7 +647,10 @@ class _EditReadDialogState extends State<_EditReadDialog> {
     final today = DateUtils.dateOnly(DateTime.now());
     final range = await showDateRangePicker(
       context: context,
-      initialDateRange: DateTimeRange(start: _start, end: _end),
+      initialDateRange: DateTimeRange(
+        start: _start.isAfter(today) ? today : _start,
+        end: _end.isAfter(today) ? today : _end,
+      ),
       firstDate: DateTime(1900),
       lastDate: today,
       helpText: approximate
@@ -595,6 +683,7 @@ class _EditReadDialogState extends State<_EditReadDialog> {
     final days = _end.difference(_start).inDays + 1;
 
     return AlertDialog(
+      scrollable: true,
       titlePadding: const EdgeInsets.fromLTRB(
         Space.block,
         Space.block,
@@ -632,16 +721,16 @@ class _EditReadDialogState extends State<_EditReadDialog> {
             Text(
               'No dates are kept for this read. It still counts towards your '
               'totals.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: c.inkMuted),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: c.inkMuted),
             ),
           ] else ...[
             const SizedBox(height: Space.snug),
             Semantics(
               button: true,
-              label: 'Dates, ${readSpanOf(_start, _end, _precision)}. '
+              label:
+                  'Dates, ${readSpanOf(_start, _end, _precision)}. '
                   'Change dates.',
               excludeSemantics: true,
               child: InkWell(
@@ -710,8 +799,10 @@ class _EditReadDialogState extends State<_EditReadDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () =>
-              Navigator.pop(context, _ReadEdit(_start, _end, _rating, _precision)),
+          onPressed: () => Navigator.pop(
+            context,
+            _ReadEdit(_start, _end, _rating, _precision),
+          ),
           child: const Text('Save read'),
         ),
       ],
@@ -736,6 +827,7 @@ class _RatingDialogState extends State<_RatingDialog> {
     final c = context.c;
 
     return AlertDialog(
+      scrollable: true,
       title: const Text('Rate this read'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -745,10 +837,9 @@ class _RatingDialogState extends State<_RatingDialog> {
             'Optional, and it belongs to this read alone — a reread can score '
             'differently. You can set or change it later from the reading '
             'history.',
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: c.inkMuted),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: c.inkMuted),
           ),
           const SizedBox(height: Space.step),
           StarRating(

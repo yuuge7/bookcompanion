@@ -25,7 +25,7 @@ class Spine extends StatelessWidget {
   /// How full the spine stands. A finished book is full; a dropped book
   /// stops where the reader stopped; an unstarted book is empty.
   double get _level {
-    final total = book.totalPages;
+    final total = book.progressTotal;
     final open = book.openSession;
 
     if (book.status == BookStatus.read) return 1;
@@ -67,7 +67,7 @@ class Spine extends StatelessWidget {
   }
 
   String _semanticLabel() {
-    final total = book.totalPages;
+    final total = book.progressTotal;
     final open = book.openSession;
     if (open != null && total != null && total > 0) {
       return '${(_level * 100).round()} percent read';

@@ -36,11 +36,7 @@ class Panel extends StatelessWidget {
     if (onTap == null) return body;
     return Material(
       color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: Radii.block,
-        child: body,
-      ),
+      child: InkWell(onTap: onTap, borderRadius: Radii.block, child: body),
     );
   }
 }
@@ -236,8 +232,7 @@ class StarRating extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          mainAxisSize: MainAxisSize.min,
+        Wrap(
           children: List.generate(5, (i) {
             final star = i + 1;
             final on = value != null && star <= value!;
@@ -275,13 +270,24 @@ class SectionHeading extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Meta(label, color: c.ink, size: 12, weight: FontWeight.w600),
-        const SizedBox(width: Space.step),
-        Expanded(child: Container(height: 1, color: c.rule)),
-        if (trailing != null) ...[
-          const SizedBox(width: Space.step),
-          trailing!,
-        ],
+        Expanded(
+          child: Row(
+            children: [
+              Flexible(
+                child: Meta(
+                  label,
+                  color: c.ink,
+                  size: 12,
+                  weight: FontWeight.w600,
+                  maxLines: 3,
+                ),
+              ),
+              const SizedBox(width: Space.step),
+              Expanded(child: Container(height: 1, color: c.rule)),
+            ],
+          ),
+        ),
+        if (trailing != null) ...[const SizedBox(width: Space.step), trailing!],
       ],
     );
   }
@@ -375,7 +381,8 @@ class LedgerTabs extends StatelessWidget {
                 animation: controller.animation ?? controller,
                 builder: (context, _) {
                   final value =
-                      controller.animation?.value ?? controller.index.toDouble();
+                      controller.animation?.value ??
+                      controller.index.toDouble();
                   return Positioned(
                     left: tabWidth * value,
                     width: tabWidth,
@@ -493,14 +500,17 @@ class _StatePanel extends StatelessWidget {
           const SizedBox(height: Space.snug),
           Text(
             body,
-            style: Theme.of(context)
-                .textTheme
-                .bodyMedium
-                ?.copyWith(color: c.inkMuted),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: c.inkMuted),
           ),
           if (actions.isNotEmpty) ...[
             const SizedBox(height: Space.gutter),
-            Wrap(spacing: Space.snug, runSpacing: Space.snug, children: actions),
+            Wrap(
+              spacing: Space.snug,
+              runSpacing: Space.snug,
+              children: actions,
+            ),
           ],
         ],
       ),

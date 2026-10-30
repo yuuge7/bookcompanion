@@ -1,0 +1,36 @@
+[
+  {
+    "id": "legacy-finished",
+    "title": "A book from v1.1",
+    "author": "Reader",
+    "coverImagePath": null,
+    "status": "read",
+    "totalPages": 200,
+    "sessions": [
+      {
+        "id": "legacy-session",
+        "startDate": "2024-01-01T00:00:00.000",
+        "endDate": "2024-01-10T00:00:00.000",
+        "rating": 4,
+        "currentPage": 200
+      }
+    ]
+  },
+  {
+    "id": "legacy-open",
+    "title": "Still reading",
+    "author": "",
+    "coverImagePath": null,
+    "status": "reading",
+    "totalPages": 300,
+    "sessions": [
+      {
+        "id": "open-session",
+        "startDate": "2024-02-01T00:00:00.000",
+        "endDate": null,
+        "rating": null,
+        "currentPage": 42
+      }
+    ]
+  }
+]

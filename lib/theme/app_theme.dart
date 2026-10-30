@@ -12,8 +12,17 @@ import 'tokens.dart';
 abstract final class AppTheme {
   static ThemeData light() => _build(LedgerColors.light, Brightness.light);
   static ThemeData dark() => _build(LedgerColors.dark, Brightness.dark);
+  static ThemeData fromScheme(ColorScheme scheme) => _build(
+    LedgerColors.fromScheme(scheme),
+    scheme.brightness,
+    schemeOverride: scheme,
+  );
 
-  static ThemeData _build(LedgerColors c, Brightness brightness) {
+  static ThemeData _build(
+    LedgerColors c,
+    Brightness brightness, {
+    ColorScheme? schemeOverride,
+  }) {
     final text = _textTheme(c);
 
     final scheme = ColorScheme(
@@ -35,7 +44,8 @@ abstract final class AppTheme {
     return ThemeData(
       useMaterial3: true,
       brightness: brightness,
-      colorScheme: scheme,
+      colorScheme: schemeOverride ?? scheme,
+      extensions: [c],
       scaffoldBackgroundColor: c.ground,
       canvasColor: c.ground,
       dividerColor: c.rule,
@@ -242,12 +252,12 @@ abstract final class AppTheme {
         );
 
     TextStyle body(double size, Color color) => TextStyle(
-          fontFamily: Faces.body,
-          fontSize: size,
-          height: 1.45,
-          color: color,
-          fontFeatures: kTabular,
-        );
+      fontFamily: Faces.body,
+      fontSize: size,
+      height: 1.45,
+      color: color,
+      fontFeatures: kTabular,
+    );
 
     TextStyle utility(double size, Color color, {FontWeight? weight}) =>
         TextStyle(

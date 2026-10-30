@@ -12,11 +12,18 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: book-companion-release
+  cancel-in-progress: false
+
 env:
   APP_NAME: "Book Companion"
 
 jobs:
+  checks:
+    uses: ./.github/workflows/ci.yml
   release:
+    needs: checks
     if: "!contains(github.event.head_commit.message, '[skip ci]')"
     runs-on: ubuntu-latest
     steps:
@@ -41,14 +48,6 @@ jobs:
           echo "version=${NEW_VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
 
-      - name: Commit version bump
-        run: |
-          git config user.name "release-bot"
-          git config user.email "release-bot@users.noreply.github.com"
-          git add pubspec.yaml
-          git commit -m "chore: bump version to ${{ steps.bump.outputs.tag }} [skip ci]"
-          git push
-
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -58,6 +57,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.47.0'
           channel: stable
           cache: true
 
@@ -80,11 +80,34 @@ jobs:
           EOF
 
       - name: Build release APK
-        run: flutter build apk --release
+        run: flutter build apk --release --split-per-abi
+
+      - name: Write changelog and checksums
+        run: |
+          PREVIOUS=$(git describe --tags --abbrev=0 2>/dev/null || true)
+          if [ -n "$PREVIOUS" ]; then
+            git log "$PREVIOUS..HEAD" --no-merges --pretty=format:'- %s' --invert-grep --grep='\[skip ci\]' > "$RUNNER_TEMP/release-notes.md"
+          else
+            git log --no-merges --pretty=format:'- %s' --invert-grep --grep='\[skip ci\]' > "$RUNNER_TEMP/release-notes.md"
+          fi
+          cd build/app/outputs/flutter-apk
+          sha256sum app-*-release.apk > SHA256SUMS
+
+      - name: Commit successful version bump
+        run: |
+          git config user.name "release-bot"
+          git config user.email "release-bot@users.noreply.github.com"
+          git add pubspec.yaml
+          git commit -m "chore: bump version to ${{ steps.bump.outputs.tag }} [skip ci]"
+          git push
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.bump.outputs.tag }}
           name: "${{ env.APP_NAME }} ${{ steps.bump.outputs.tag }}"
-          files: build/app/outputs/flutter-apk/app-release.apk
+          target_commitish: main
+          body_path: ${{ runner.temp }}/release-notes.md
+          files: |
+            build/app/outputs/flutter-apk/app-*-release.apk
+            build/app/outputs/flutter-apk/SHA256SUMS

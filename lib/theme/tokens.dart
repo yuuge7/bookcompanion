@@ -6,7 +6,7 @@ import 'package:flutter/material.dart';
 /// against the others. The rule that keeps the app coherent: [accent] means
 /// reading progress and completed reads, and nothing else. Navigation,
 /// buttons and headings are ink, never accent.
-class LedgerColors {
+class LedgerColors extends ThemeExtension<LedgerColors> {
   const LedgerColors({
     required this.ground,
     required this.panel,
@@ -65,6 +65,71 @@ class LedgerColors {
 
   /// Destructive actions and error states only.
   final Color danger;
+
+  factory LedgerColors.fromScheme(ColorScheme s) => LedgerColors(
+    ground: s.surface,
+    panel: s.surfaceContainerLow,
+    well: s.surfaceContainerHighest,
+    plate: s.secondaryContainer,
+    rule: s.outlineVariant,
+    ruleStrong: s.outline,
+    ink: s.onSurface,
+    inkMuted: s.onSurfaceVariant,
+    inkFaint: s.onSurfaceVariant.withValues(alpha: .65),
+    accent: s.primary,
+    accentQuiet: s.primaryContainer,
+    onInk: s.surface,
+    danger: s.error,
+  );
+  @override
+  LedgerColors copyWith({
+    Color? ground,
+    Color? panel,
+    Color? well,
+    Color? plate,
+    Color? rule,
+    Color? ruleStrong,
+    Color? ink,
+    Color? inkMuted,
+    Color? inkFaint,
+    Color? accent,
+    Color? accentQuiet,
+    Color? onInk,
+    Color? danger,
+  }) => LedgerColors(
+    ground: ground ?? this.ground,
+    panel: panel ?? this.panel,
+    well: well ?? this.well,
+    plate: plate ?? this.plate,
+    rule: rule ?? this.rule,
+    ruleStrong: ruleStrong ?? this.ruleStrong,
+    ink: ink ?? this.ink,
+    inkMuted: inkMuted ?? this.inkMuted,
+    inkFaint: inkFaint ?? this.inkFaint,
+    accent: accent ?? this.accent,
+    accentQuiet: accentQuiet ?? this.accentQuiet,
+    onInk: onInk ?? this.onInk,
+    danger: danger ?? this.danger,
+  );
+  @override
+  LedgerColors lerp(covariant LedgerColors? other, double t) {
+    if (other == null) return this;
+    return LedgerColors(
+      ground: Color.lerp(ground, other.ground, t)!,
+      panel: Color.lerp(panel, other.panel, t)!,
+      well: Color.lerp(well, other.well, t)!,
+      plate: Color.lerp(plate, other.plate, t)!,
+      rule: Color.lerp(rule, other.rule, t)!,
+      ruleStrong: Color.lerp(ruleStrong, other.ruleStrong, t)!,
+      ink: Color.lerp(ink, other.ink, t)!,
+      inkMuted: Color.lerp(inkMuted, other.inkMuted, t)!,
+      inkFaint: Color.lerp(inkFaint, other.inkFaint, t)!,
+      accent: Color.lerp(accent, other.accent, t)!,
+      accentQuiet: Color.lerp(accentQuiet, other.accentQuiet, t)!,
+      onInk: Color.lerp(onInk, other.onInk, t)!,
+      danger: Color.lerp(danger, other.danger, t)!,
+    );
+  }
 
   static const light = LedgerColors(
     ground: Color(0xFFE9ECE5),
@@ -149,7 +214,9 @@ abstract final class Faces {
 const kTabular = <FontFeature>[FontFeature.tabularFigures()];
 
 extension LedgerTheme on BuildContext {
-  LedgerColors get c => Theme.of(this).brightness == Brightness.dark
-      ? LedgerColors.dark
-      : LedgerColors.light;
+  LedgerColors get c =>
+      Theme.of(this).extension<LedgerColors>() ??
+      (Theme.of(this).brightness == Brightness.dark
+          ? LedgerColors.dark
+          : LedgerColors.light);
 }

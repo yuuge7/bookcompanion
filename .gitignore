@@ -28,6 +28,11 @@ migrate_working_dir/
 .pub-cache/
 .pub/
 /build/
+/android/build/
+/android/.kotlin/
+/android/.gradle/
+/coverage/
+/test-output/
 
 # Symbolication related
 app.*.symbols

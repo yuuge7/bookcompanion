@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root" android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="vertical" android:padding="18dp" android:background="@drawable/widget_background">
+    <TextView android:layout_width="match_parent" android:layout_height="wrap_content" android:text="BOOK COMPANION" android:textColor="#536950" android:textSize="10sp" />
+    <TextView android:id="@+id/widget_title" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:text="No book open" android:textColor="#25251F" android:textSize="18sp" android:maxLines="2" android:ellipsize="end" />
+    <ProgressBar android:id="@+id/widget_bar" style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent" android:layout_height="6dp" android:layout_marginTop="12dp" android:progressTint="#536950" android:progressBackgroundTint="#D8D7CE" />
+    <TextView android:id="@+id/widget_progress" android:layout_width="match_parent" android:layout_height="wrap_content"
+        android:layout_marginTop="8dp" android:text="Tap to update progress" android:textColor="#55554B" android:textSize="13sp" />
+</LinearLayout>

@@ -37,8 +37,9 @@ class _SetPageDialog extends StatefulWidget {
 }
 
 class _SetPageDialogState extends State<_SetPageDialog> {
-  late final TextEditingController _controller =
-      TextEditingController(text: '${widget.current}');
+  late final TextEditingController _controller = TextEditingController(
+    text: widget.book.progressLabel(widget.current),
+  );
   String? _error;
 
   @override
@@ -47,13 +48,22 @@ class _SetPageDialogState extends State<_SetPageDialog> {
     super.dispose();
   }
 
-  int? get _total => widget.book.totalPages;
+  int? get _total => widget.book.progressTotal;
 
   void _submit() {
     final raw = _controller.text.trim();
-    final value = int.tryParse(raw);
+    final match = RegExp(r'^(\d+):([0-5]\d)$').firstMatch(raw);
+    final value = widget.book.isAudio
+        ? (match == null
+              ? null
+              : int.parse(match[1]!) * 60 + int.parse(match[2]!))
+        : int.tryParse(raw);
     if (raw.isEmpty || value == null) {
-      setState(() => _error = 'Type a page number, digits only.');
+      setState(
+        () => _error = widget.book.isAudio
+            ? 'Use hours:minutes, for example 2:30.'
+            : 'Type a page number, digits only.',
+      );
       return;
     }
     if (value < 0) {
@@ -61,7 +71,10 @@ class _SetPageDialogState extends State<_SetPageDialog> {
       return;
     }
     if (_total != null && value > _total!) {
-      setState(() => _error = 'This book has $_total pages.');
+      setState(
+        () =>
+            _error = 'This book ends at ${widget.book.progressLabel(_total!)}.',
+      );
       return;
     }
     Navigator.pop(context, value);
@@ -72,6 +85,7 @@ class _SetPageDialogState extends State<_SetPageDialog> {
     final c = context.c;
 
     return AlertDialog(
+      scrollable: true,
       titlePadding: const EdgeInsets.fromLTRB(
         Space.block,
         Space.block,
@@ -87,9 +101,9 @@ class _SetPageDialogState extends State<_SetPageDialog> {
       title: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Meta('now on p. ${widget.current}', size: 11),
+          Meta('now at ${widget.book.progressLabel(widget.current)}', size: 11),
           const SizedBox(height: Space.tight),
-          const Text('Current page'),
+          Text(widget.book.isAudio ? 'Listening time' : 'Current page'),
         ],
       ),
       content: Column(
@@ -99,8 +113,13 @@ class _SetPageDialogState extends State<_SetPageDialog> {
           TextField(
             controller: _controller,
             autofocus: true,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            key: const ValueKey('progress-input'),
+            keyboardType: widget.book.isAudio
+                ? TextInputType.datetime
+                : TextInputType.number,
+            inputFormatters: widget.book.isAudio
+                ? [FilteringTextInputFormatter.allow(RegExp('[0-9:]'))]
+                : [FilteringTextInputFormatter.digitsOnly],
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _submit(),
             style: TextStyle(
@@ -111,7 +130,9 @@ class _SetPageDialogState extends State<_SetPageDialog> {
               fontFeatures: kTabular,
             ),
             decoration: InputDecoration(
-              suffixText: _total != null ? 'of $_total' : null,
+              suffixText: _total != null
+                  ? 'of ${widget.book.progressLabel(_total!)}'
+                  : null,
               suffixStyle: TextStyle(
                 fontFamily: Faces.utility,
                 fontSize: 13,
@@ -134,7 +155,10 @@ class _SetPageDialogState extends State<_SetPageDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('Cancel'),
         ),
-        FilledButton(onPressed: _submit, child: const Text('Save page')),
+        FilledButton(
+          onPressed: _submit,
+          child: Text(widget.book.isAudio ? 'Save time' : 'Save page'),
+        ),
       ],
     );
   }

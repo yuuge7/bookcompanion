@@ -1,171 +1,147 @@
 # Book Companion
 
-A personal Android book tracker. Data lives on-device only — no accounts, no analytics, no network calls.
+An offline Android reading journal. No accounts, analytics, telemetry, network
+permission, or Android cloud backup. Your library stays in app storage until you
+choose to export a file. Inspired by
+[mangacompanion](https://github.com/yuuge7/mangacompanion).
 
-Inspired by [mangacompanion](https://github.com/yuuge7/mangacompanion), adapted for books: every read (and reread) is tracked as its own session with start/end dates, an optional per-read rating, and page progress.
+## Reading
 
-## Features
+- Reading, To Read, Read, On Hold, and Dropped shelves, with live counts.
+- Each read and reread has its own dates, date precision, rating, and progress.
+  Exact, month-only, and unknown dates remain distinct. Unknown dates count in
+  all-time totals without being assigned to a guessed year.
+- Paperback, hardcover, ebook, and audiobook editions. Audio progress uses
+  hours:minutes; it never adds listening minutes to page statistics.
+- Optional subtitle, ISBN, publisher, publication year, language, series and
+  number, tags/genres, personal notes, and a reason for dropping a book.
+- Searchable quotes/highlights with optional page or listening-time location.
+- Dated progress history, pace, estimated finish, and activity streaks.
+- Accent-insensitive search with small typo tolerance across title, author,
+  subtitle, ISBN, publisher, notes, series, tags, and quotes.
+- Sort by title, author, date added, last read, rating, or progress. Filter by
+  tag, format, finish year, rating, and series.
+- Long-press a row to select books and change their shelf, tag, or trash them.
+  Delete offers Undo; Settings → Trash can restore books for 30 days. Expired
+  trash is removed on the next load/save. Unused managed covers are cleaned up.
+- Camera/gallery covers with an on-device crop screen. Covers are compressed,
+  stripped of EXIF/GPS, and copied into durable private storage.
 
-- **To Read / Reading / Read / Dropped** tabs with live counts
-- Reading tracked as a **list of sessions** — a reread adds a new entry instead of overwriting history, so the full read/reread timeline stays visible
-- Start and end date per session, at a precision you choose: **exact** days,
-  **approximate** (month only, and it may span months), or **unknown** — an old
-  read with no remembered dates still counts, without a guessed day attached
-- Optional 1–5 star rating per read (rate a reread differently from the first
-  read), set when you finish, on the add/edit screen, or later from the book's
-  reading history
-- Page progress, typed in directly — no +/- stepper
-- Light / dark / system theme, toggled from the app bar
-- Stats screen: books read, pages read, completed reads, rereads, average rating
-- Search by title or author
-- Import/export as a plain JSON array
+## Backups and moving phones
 
-## Data model
+Settings → Backups, import & export offers:
 
-```
-Book
- ├─ title, author, coverImagePath, status, totalPages
- └─ sessions: [ReadingSession]
-     ├─ startDate
-     ├─ endDate    (null while the session is in progress)
-     ├─ rating     (optional, 1–5)
-     ├─ currentPage
-     └─ precision  (exact | approximate | unknown)
-```
+- **Complete `.bcbackup`**: a ZIP containing `library.json`, `covers/`, and
+  `manifest.json`. The manifest records schema/app version, export time, book
+  count, and SHA-256 checksums for the library and every cover. Includes trash.
+- **Import preview**: added, changed, removed, and retained counts before writing.
+  Merge matches IDs and keeps the newer `updatedAt`; a tie keeps the local copy.
+  Replace explicitly confirms the current and incoming library sizes.
+- **Recovery snapshots**: every import takes a complete local snapshot first.
+  Daily snapshots are optional and on by default. The ten newest snapshots are
+  retained and can be restored through the same preview, or exported.
+- **Other formats**: schema-2 JSON, spreadsheet-safe CSV, printable HTML, and an
+  offline-generated PDF. These exports omit image bytes; use `.bcbackup` to move
+  covers. JSON exports from every past release remain readable. Goodreads CSV
+  exports can also be imported, with deterministic IDs for repeat imports.
 
-`timesRead` is the number of sessions with an `endDate`. A book with `timesRead > 1` has been reread; every session's dates and rating stay visible on the book's detail screen.
+Invalid files, duplicate IDs, invalid dates, ratings outside 1–5, out-of-bounds
+progress, unsafe ZIP paths, incomplete bundles, and checksum failures are rejected
+before the library changes. JSON/CSV imports never follow arbitrary cover paths.
+The previous unreadable raw library is preserved when a recovery import replaces
+it. Snapshot files stay local, so export a backup before uninstalling the app.
 
-`precision` says how far the dates can be trusted. `startDate` and `endDate` are always set, because `endDate == null` is what marks a read as still open — a finished read with no remembered dates still has to close. When `precision` is not `exact` the stored days are placeholders that the app never shows: only the month is displayed for `approximate`, and nothing at all for `unknown`, and `daysTaken` reports no duration rather than inventing one.
+The Android ID is now **`io.github.yuuge7.bookcompanion`**. If upgrading from
+`com.example.book_companion`, export JSON in the old app before uninstalling it,
+install the new app, then import. Android treats the IDs as separate apps. Old
+JSON contains cover paths rather than photos: select those covers again, then
+make a complete backup.
 
-Exports written before `precision` existed load as `exact`, which is what they were — it was the only kind the app could record.
+## Stats and settings
 
-## Getting started
+Stats supports a year selector and all-time totals, monthly books/pages charts,
+rating distribution, top authors/tags, format split, listening time, reading
+goals in books or pages, and progress-based streaks. Year in Review exports a PNG
+made on-device. Historic reads without logs contribute known pages to their
+finish month; daily activity comes only from real progress entries. Approximate
+and unknown dates never invent daily streaks.
 
-### Prerequisites
+Settings persists light/dark/system theme, optional Android Material You colors,
+default date precision, first day of week, backups, and privacy preferences.
+App lock uses the device PIN/biometrics and covers the entire navigation stack on
+launch and after backgrounding. Recent-apps hiding uses Android `FLAG_SECURE`
+(also blocks screenshots/recording). App lock always enables that protection and
+hides widget details. Exported files are not encrypted by the app lock.
 
-- [Flutter SDK](https://docs.flutter.dev/get-started/install) (stable channel)
-- Android Studio, or the Android SDK command-line tools with at least one platform installed
-- A JDK 17+ (Android Studio bundles one)
+Add the **Current book** Android home-screen widget from Settings or the launcher.
+It shows the first book on your Reading shelf and a progress bar; tap to open its
+progress editor. Android predictive back, edge-to-edge, and a themed icon are
+enabled.
 
-### Setup
+Library mutations are serialized and immutable. State changes only after a
+flushed temporary file is renamed over the saved library. A failed save preserves
+the previous state and offers retry/discard. Diagnostics contain only operation
+names, error types, and counts, stay local, and can be exported from Settings.
 
-```bash
-git clone <this-repo-url>
-cd book_companion
+## Development
+
+Use Flutter **3.47.0**, Dart 3.10+, JDK 17+, and the Android SDK (compile API 37).
+
+```sh
 flutter pub get
-flutter run
+flutter analyze
+flutter test
+flutter emulators --launch Medium_Phone
+flutter test integration_test/app_test.dart -d emulator-5554
+flutter run -d emulator-5554
 ```
 
-### Project layout
+Tests cover model round-trips/immutability, exports generated by the serializers
+from tags v1.0–v1.5, validation, atomic persistence, save failure/retry, merge and
+replace, covers/EXIF, snapshots, trash, search/filter/sort, stats math, settings,
+CSV/HTML/PDF, large text, lock coverage, import confirmation, bulk actions, and the
+add → start → page → finish → rate flow. The Android integration test also uses
+real files, cropping, audio progress, cover bundles, native secure-window flags,
+and restart persistence. It uses an isolated temporary library.
 
-```
-lib/
- ├─ main.dart
- ├─ models/
- │   ├─ book.dart
- │   └─ reading_session.dart
- ├─ services/
- │   ├─ library_model.dart     # app state + session actions (start/finish/reread)
- │   ├─ storage_service.dart   # on-device JSON persistence + import/export
- │   └─ theme_notifier.dart    # light/dark/system toggle
- ├─ screens/
- │   ├─ home_screen.dart
- │   ├─ book_detail_screen.dart
- │   ├─ add_edit_book_screen.dart
- │   └─ stats_screen.dart
- └─ widgets/
-     └─ book_card.dart
-```
-
-## Building a signed release APK locally
-
-`android/app/build.gradle.kts` reads its signing config from `android/key.properties`, which is intentionally **not** committed (see `.gitignore`). To build a signed release on a machine that already has the signing key:
-
-1. Place `book_companion_release.keystore` in the project root (next to `pubspec.yaml`).
-2. Create `android/key.properties`:
-   ```properties
-   storePassword=<store password>
-   keyPassword=<key password>
-   keyAlias=upload
-   storeFile=../../book_companion_release.keystore
-   ```
-3. Run:
-   ```bash
-   flutter build apk --release
-   # APK at build/app/outputs/flutter-apk/app-release.apk
-   ```
-
-`android/app/build.gradle.kts` needs a signing block that reads that file — if it isn't there yet:
-
-```kotlin
-import java.util.Properties
-import java.io.FileInputStream
-
-val keystoreProperties = Properties()
-val keystorePropertiesFile = rootProject.file("key.properties")
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
-}
-
-android {
-    // ...existing config...
-    signingConfigs {
-        create("release") {
-            keyAlias = keystoreProperties["keyAlias"] as String?
-            keyPassword = keystoreProperties["keyPassword"] as String?
-            storeFile = keystoreProperties["storeFile"]?.let { file(it) }
-            storePassword = keystoreProperties["storePassword"] as String?
-        }
-    }
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("release")
-        }
-    }
-}
-```
-
-## Signing key
-
-Android requires every update to an installed app to be signed with the **same** key as the original install — a different key means uninstalling before you can reinstall. This project keeps a single signing key for its lifetime instead of generating a new one per machine:
-
-- `book_companion_release.keystore` (RSA 2048, valid ~27 years) lives in the project root but is git-ignored — it is never committed, and never should be.
-- Its passwords are not written down anywhere in this repo. Store them in a password manager or another secure vault you control.
-- CI never touches the file itself — only a base64-encoded copy lives in encrypted GitHub Actions secrets, decoded fresh on every run (see the workflow below).
-
-### Using the same key on another machine
-
-1. Copy `book_companion_release.keystore` itself to the new machine (e.g. from your password manager's file storage, an encrypted USB drive, or another secure channel — not email, not a public repo, not chat).
-2. Recreate `android/key.properties` there as shown above, using the same passwords.
-3. That's it — builds from this machine will be signed identically to every other one, and Android will accept them as updates to an existing install.
-
-If this key is ever lost, there's no way to recover it — any future release would need a new key, and everyone with the app installed would need to uninstall first.
+JSON remains the storage format. The suite includes a 5,000-book save/load check;
+SQLite is reserved for demonstrated latency in a real large library. JSON stays
+the import/export compatibility format either way.
 
 ## Releases
 
-`.github/workflows/release.yml` runs on every push to `main` (skipping the version-bump commit it makes, so it doesn't loop) and:
+Pull requests run formatting, analysis, unit/widget tests, and an Android emulator
+integration test. Main pushes run the same checks before the release job. A failed
+check blocks release and the automatic version bump. Dependabot checks pub
+dependencies weekly and GitHub Actions monthly.
 
-1. Bumps the version in `pubspec.yaml` (`v1.0` → `v1.1` → `v1.2` …) and commits that back to `main`
-2. Builds a signed release APK using the secrets below
-3. Publishes a GitHub Release named `Book Companion vX.Y` with the APK attached
+The release job bumps the version, builds R8-minified APKs split by ABI, writes a
+changelog from commit subjects, attaches `SHA256SUMS`, commits the successful
+version bump, and publishes a GitHub Release. The bump commit skips CI to avoid a
+loop. GitHub Actions needs `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_PASSWORD`,
+and `KEY_ALIAS` repository secrets.
 
-Before the first run, add these repository secrets (**Settings → Secrets and variables → Actions → New repository secret**):
+For a signed local release, keep your existing `book_companion_release.keystore`
+in the project root and create the ignored `android/key.properties`:
 
-| Secret | Value |
-| --- | --- |
-| `KEYSTORE_BASE64` | `base64 -w0 book_companion_release.keystore` (Linux/macOS), or `[Convert]::ToBase64String([IO.File]::ReadAllBytes("book_companion_release.keystore"))` (PowerShell) |
-| `KEYSTORE_PASSWORD` | the store password |
-| `KEY_PASSWORD` | the key password |
-| `KEY_ALIAS` | `upload` |
+```properties
+storePassword=<store password>
+keyPassword=<key password>
+keyAlias=upload
+storeFile=../../book_companion_release.keystore
+```
 
-## Contributing
+```sh
+flutter build apk --release --split-per-abi
+```
 
-1. Fork the repo and create a branch off `main`
-2. Make your change — `flutter analyze` and `flutter test` should both pass
-3. Open a pull request describing what changed and why
+APKs appear in `build/app/outputs/flutter-apk/`. Without `key.properties`, local
+release builds use the debug key for testing. Production releases must use the
+existing release key. Keep the key and passwords in a secure backup; never commit
+them. Losing the signing key prevents updating existing installations.
 
-Small, focused PRs are easiest to review. New features that touch the data model (`Book`/`ReadingSession`) should keep existing JSON export/import working, since that's the only backup/migration path for someone's library today.
-
-## License
+Generated builds, IDE caches, and local signing material are ignored. Source icon
+art and `tool/make_icons.py` remain for reproducible launcher icons. PDF uses the
+bundled Noto Sans font under its [SIL Open Font License](assets/fonts/OFL.txt).
 
 MIT — see [LICENSE](LICENSE).
