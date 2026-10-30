@@ -12,7 +12,7 @@ dependencies:
   provider: ^6.1.2           # simple state management for the library model
   path_provider: ^2.1.2      # find on-device app storage folder
   file_picker: ^8.0.0        # pick a JSON file to import, or a folder to export to
-  image_picker: ^1.1.1       # pick a cover image from gallery
+  image_picker: ^1.2.4       # pick a cover image from gallery
   intl: ^0.19.0              # date formatting
   uuid: ^4.4.0                # generate ids for books/sessions
   archive: ^4.5.2
