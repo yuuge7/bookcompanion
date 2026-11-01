@@ -154,7 +154,14 @@ class LibraryModel extends ChangeNotifier {
         status: status,
         sessions: [
           ...b.sessions,
-          ReadingSession(id: const Uuid().v4(), startDate: now),
+          ReadingSession(
+            id: const Uuid().v4(),
+            startDate: now,
+            format: b.format,
+            totalLength: b.format == BookFormat.audiobook
+                ? b.totalMinutes
+                : b.totalPages,
+          ),
         ],
       );
     }
@@ -171,6 +178,8 @@ class LibraryModel extends ChangeNotifier {
             endDate: now,
             currentPage: b.progressTotal ?? 0,
             precision: DatePrecision.unknown,
+            format: b.currentFormat,
+            totalLength: b.progressTotal,
           ),
         ],
       );
@@ -182,6 +191,8 @@ class LibraryModel extends ChangeNotifier {
     Book book, {
     DateTime? startDate,
     DatePrecision precision = DatePrecision.exact,
+    BookFormat? format,
+    Object? totalLength = unset,
   }) => _change(book, (b) {
     if (b.openSession != null) return b.copyWith(status: BookStatus.reading);
     return b.copyWith(
@@ -192,6 +203,12 @@ class LibraryModel extends ChangeNotifier {
           id: const Uuid().v4(),
           startDate: startDate ?? DateTime.now(),
           precision: precision,
+          format: format ?? b.format,
+          totalLength: identical(totalLength, unset)
+              ? ((format ?? b.format) == BookFormat.audiobook
+                    ? b.totalMinutes
+                    : b.totalPages)
+              : totalLength as int?,
         ),
       ],
     );
@@ -245,6 +262,8 @@ class LibraryModel extends ChangeNotifier {
     DateTime? endDate,
     required int? rating,
     DatePrecision? precision,
+    BookFormat? format,
+    Object? totalLength = unset,
   }) async {
     final ok = await _change(
       book,
@@ -253,11 +272,14 @@ class LibraryModel extends ChangeNotifier {
             .map(
               (s) => s.id != session.id
                   ? s
-                  : s.copyWith(
+                  : _editRead(
+                      s,
                       startDate: startDate,
                       endDate: endDate ?? s.endDate,
                       rating: rating,
                       precision: precision,
+                      format: format,
+                      totalLength: totalLength,
                     ),
             )
             .toList(),
@@ -265,6 +287,37 @@ class LibraryModel extends ChangeNotifier {
     );
     if (ok) await HapticFeedback.selectionClick();
     return ok;
+  }
+
+  ReadingSession _editRead(
+    ReadingSession session, {
+    DateTime? startDate,
+    DateTime? endDate,
+    int? rating,
+    DatePrecision? precision,
+    BookFormat? format,
+    Object? totalLength = unset,
+  }) {
+    final nextFormat = format ?? session.format;
+    final changedUnits =
+        (nextFormat == BookFormat.audiobook) != session.isAudio;
+    final length = identical(totalLength, unset)
+        ? session.totalLength
+        : totalLength as int?;
+    return session.copyWith(
+      startDate: startDate,
+      endDate: endDate ?? session.endDate,
+      rating: rating,
+      precision: precision,
+      format: nextFormat,
+      totalLength: length,
+      currentPage: changedUnits
+          ? (session.isOpen ? 0 : length ?? 0)
+          : !session.isOpen && length != session.totalLength
+          ? length ?? session.currentPage
+          : session.currentPage,
+      progress: changedUnits ? [] : session.progress,
+    );
   }
 
   Future<bool> updatePage(Book book, int page, {DateTime? date}) =>
@@ -399,19 +452,19 @@ class LibraryModel extends ChangeNotifier {
       books.fold(0, (sum, b) => sum + b.timesRead);
   int get totalRereads =>
       books.fold(0, (sum, b) => sum + (b.timesRead > 1 ? b.timesRead - 1 : 0));
-  int get totalPagesRead => books
-      .where((b) => !b.isAudio)
-      .fold(
-        0,
-        (sum, b) =>
-            sum +
-            b.sessions.fold(
+  int get totalPagesRead => books.fold(
+    0,
+    (sum, b) =>
+        sum +
+        b.sessions
+            .where((s) => !s.isAudio)
+            .fold(
               0,
               (total, s) =>
                   total +
-                  (s.isOpen ? s.currentPage : b.totalPages ?? s.currentPage),
+                  (s.isOpen ? s.currentPage : s.totalLength ?? s.currentPage),
             ),
-      );
+  );
   double? get averageRating {
     final ratings = books
         .expand((b) => b.sessions)

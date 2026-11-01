@@ -13,6 +13,7 @@ import '../theme/tokens.dart';
 import '../widgets/book_row.dart' show plateLetterFor;
 import '../widgets/ledger.dart';
 import '../widgets/read_dates.dart';
+import '../widgets/read_format_fields.dart';
 import '../widgets/set_page_dialog.dart';
 import '../widgets/spine.dart';
 import 'add_edit_book_screen.dart';
@@ -369,6 +370,27 @@ class _OpenRead extends StatelessWidget {
           ],
           const SizedBox(height: Space.step),
           Meta(startedPhrase(session, short: false)),
+          TextButton.icon(
+            key: const ValueKey('edit-open-read-format'),
+            onPressed: () async {
+              final library = context.read<LibraryModel>();
+              final edition = await showReadFormatDialog(
+                context,
+                book,
+                session: session,
+              );
+              if (edition == null) return;
+              await library.editSession(
+                book,
+                session,
+                rating: session.rating,
+                format: edition.format,
+                totalLength: edition.totalLength,
+              );
+            },
+            icon: const Icon(Icons.edit_outlined, size: 16),
+            label: Text(session.format!.label),
+          ),
           const SizedBox(height: Space.gutter),
           Row(
             children: [
@@ -471,9 +493,17 @@ class _ClosedRead extends StatelessWidget {
   Future<void> _start(BuildContext context) async {
     final library = context.read<LibraryModel>();
     final precision = context.read<ThemeNotifier>().defaultPrecision;
+    final edition = await showReadFormatDialog(context, book);
+    if (edition == null || !context.mounted) return;
     final today = DateUtils.dateOnly(DateTime.now());
     if (precision == DatePrecision.unknown) {
-      await library.startReading(book, startDate: today, precision: precision);
+      await library.startReading(
+        book,
+        startDate: today,
+        precision: precision,
+        format: edition.format,
+        totalLength: edition.totalLength,
+      );
       return;
     }
     final picked = await showDatePicker(
@@ -490,6 +520,8 @@ class _ClosedRead extends StatelessWidget {
           ? snapToMonthStart(picked)
           : picked,
       precision: precision,
+      format: edition.format,
+      totalLength: edition.totalLength,
     );
   }
 }
@@ -541,11 +573,12 @@ class _SessionEntry extends StatelessWidget {
     return Semantics(
       button: true,
       label:
-          'Read $readNumber, ${readSpan(session)}, '
+          'Read $readNumber, ${session.format!.label}, ${readSpan(session)}, '
           '${session.rating == null ? 'not rated' : 'rated ${session.rating} '
                     'out of 5'}. Edit this read.',
       excludeSemantics: true,
       child: InkWell(
+        key: ValueKey('read-${session.id}'),
         onTap: () => _editRead(context),
         child: Container(
           constraints: const BoxConstraints(minHeight: kTapTarget),
@@ -575,7 +608,10 @@ class _SessionEntry extends StatelessWidget {
                   children: [
                     Meta(readSpan(session), color: c.ink, size: 12),
                     const SizedBox(height: Space.tight),
-                    Meta(readSpanNote(session), size: 11),
+                    Meta(
+                      '${session.format!.label} · ${readSpanNote(session)}',
+                      size: 11,
+                    ),
                   ],
                 ),
               ),
@@ -599,7 +635,8 @@ class _SessionEntry extends StatelessWidget {
     final library = context.read<LibraryModel>();
     final result = await showDialog<_ReadEdit>(
       context: context,
-      builder: (_) => _EditReadDialog(session: session, readNumber: readNumber),
+      builder: (_) =>
+          _EditReadDialog(book: book, session: session, readNumber: readNumber),
     );
     if (result == null) return;
     await library.editSession(
@@ -609,23 +646,38 @@ class _SessionEntry extends StatelessWidget {
       endDate: result.end,
       rating: result.rating,
       precision: result.precision,
+      format: result.edition.format,
+      totalLength: result.edition.totalLength,
     );
   }
 }
 
 /// What came back from the read editor.
 class _ReadEdit {
-  const _ReadEdit(this.start, this.end, this.rating, this.precision);
+  const _ReadEdit(
+    this.start,
+    this.end,
+    this.rating,
+    this.precision,
+    this.edition,
+  );
   final DateTime start;
   final DateTime end;
   final int? rating;
   final DatePrecision precision;
+  final ReadEdition edition;
 }
 
 /// Edits one finished read. Rating lives here rather than only in the
 /// finish flow, so skipping it at the time is no longer permanent.
 class _EditReadDialog extends StatefulWidget {
-  const _EditReadDialog({required this.session, required this.readNumber});
+  const _EditReadDialog({
+    required this.book,
+    required this.session,
+    required this.readNumber,
+  });
+
+  final Book book;
 
   final ReadingSession session;
   final int readNumber;
@@ -635,6 +687,11 @@ class _EditReadDialog extends StatefulWidget {
 }
 
 class _EditReadDialogState extends State<_EditReadDialog> {
+  final _form = GlobalKey<FormState>();
+  late ReadEdition _edition = ReadEdition(
+    widget.session.format!,
+    widget.session.totalLength,
+  );
   late DateTime _start = DateUtils.dateOnly(widget.session.startDate);
   late DateTime _end = DateUtils.dateOnly(
     widget.session.endDate ?? widget.session.startDate,
@@ -704,88 +761,104 @@ class _EditReadDialogState extends State<_EditReadDialog> {
           const Text('Edit this read'),
         ],
       ),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Meta('dates'),
-          const SizedBox(height: Space.tight),
-          SegmentedChoice<DatePrecision>(
-            values: DatePrecision.values,
-            value: _precision,
-            labelOf: (p) => p.label,
-            onChanged: _changePrecision,
-          ),
-          if (_precision == DatePrecision.unknown) ...[
-            const SizedBox(height: Space.snug),
-            Text(
-              'No dates are kept for this read. It still counts towards your '
-              'totals.',
-              style: Theme.of(
-                context,
-              ).textTheme.bodySmall?.copyWith(color: c.inkMuted),
+      content: Form(
+        key: _form,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ReadFormatFields(
+              initial: ReadEdition(
+                widget.session.format!,
+                widget.session.totalLength,
+              ),
+              pageLength: widget.book.totalPages,
+              audioLength: widget.book.totalMinutes,
+              hasProgress:
+                  widget.session.currentPage > 0 ||
+                  widget.session.progress.isNotEmpty,
+              onChanged: (v) => _edition = v,
             ),
-          ] else ...[
-            const SizedBox(height: Space.snug),
-            Semantics(
-              button: true,
-              label:
-                  'Dates, ${readSpanOf(_start, _end, _precision)}. '
-                  'Change dates.',
-              excludeSemantics: true,
-              child: InkWell(
-                onTap: _pickDates,
-                borderRadius: Radii.field,
-                child: Container(
-                  width: double.infinity,
-                  constraints: const BoxConstraints(minHeight: kTapTarget),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: Space.step,
-                    vertical: Space.snug,
-                  ),
-                  decoration: BoxDecoration(
-                    color: c.well,
-                    borderRadius: Radii.field,
-                    border: Border.all(color: c.rule),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Meta(
-                              readSpanOf(_start, _end, _precision),
-                              color: c.ink,
-                              size: 12,
-                            ),
-                            const SizedBox(height: 2),
-                            Meta(
-                              _precision == DatePrecision.approximate
-                                  ? 'month only'
-                                  : '$days day${days == 1 ? '' : 's'}',
-                              size: 11,
-                            ),
-                          ],
+            const SizedBox(height: Space.gutter),
+            const Meta('dates'),
+            const SizedBox(height: Space.tight),
+            SegmentedChoice<DatePrecision>(
+              values: DatePrecision.values,
+              value: _precision,
+              labelOf: (p) => p.label,
+              onChanged: _changePrecision,
+            ),
+            if (_precision == DatePrecision.unknown) ...[
+              const SizedBox(height: Space.snug),
+              Text(
+                'No dates are kept for this read. It still counts towards your '
+                'totals.',
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: c.inkMuted),
+              ),
+            ] else ...[
+              const SizedBox(height: Space.snug),
+              Semantics(
+                button: true,
+                label:
+                    'Dates, ${readSpanOf(_start, _end, _precision)}. '
+                    'Change dates.',
+                excludeSemantics: true,
+                child: InkWell(
+                  onTap: _pickDates,
+                  borderRadius: Radii.field,
+                  child: Container(
+                    width: double.infinity,
+                    constraints: const BoxConstraints(minHeight: kTapTarget),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: Space.step,
+                      vertical: Space.snug,
+                    ),
+                    decoration: BoxDecoration(
+                      color: c.well,
+                      borderRadius: Radii.field,
+                      border: Border.all(color: c.rule),
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Meta(
+                                readSpanOf(_start, _end, _precision),
+                                color: c.ink,
+                                size: 12,
+                              ),
+                              const SizedBox(height: 2),
+                              Meta(
+                                _precision == DatePrecision.approximate
+                                    ? 'month only'
+                                    : '$days day${days == 1 ? '' : 's'}',
+                                size: 11,
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: Space.snug),
-                      Icon(Icons.event_outlined, size: 16, color: c.inkMuted),
-                    ],
+                        const SizedBox(width: Space.snug),
+                        Icon(Icons.event_outlined, size: 16, color: c.inkMuted),
+                      ],
+                    ),
                   ),
                 ),
               ),
+            ],
+            const SizedBox(height: Space.gutter),
+            const Meta('rating'),
+            const SizedBox(height: Space.tight),
+            StarRating(
+              value: _rating,
+              onChanged: (v) => setState(() => _rating = v),
             ),
           ],
-          const SizedBox(height: Space.gutter),
-          const Meta('rating'),
-          const SizedBox(height: Space.tight),
-          StarRating(
-            value: _rating,
-            onChanged: (v) => setState(() => _rating = v),
-          ),
-        ],
+        ),
       ),
       actionsPadding: const EdgeInsets.fromLTRB(
         Space.gutter,
@@ -799,10 +872,13 @@ class _EditReadDialogState extends State<_EditReadDialog> {
           child: const Text('Cancel'),
         ),
         FilledButton(
-          onPressed: () => Navigator.pop(
-            context,
-            _ReadEdit(_start, _end, _rating, _precision),
-          ),
+          onPressed: () {
+            if (!_form.currentState!.validate()) return;
+            Navigator.pop(
+              context,
+              _ReadEdit(_start, _end, _rating, _precision, _edition),
+            );
+          },
           child: const Text('Save read'),
         ),
       ],

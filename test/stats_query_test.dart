@@ -184,7 +184,7 @@ void main() {
     query.sort = LibrarySort.dateAdded;
     expect(query.apply(books).first.id, 'b');
     query.sort = LibrarySort.rating;
-    expect(query.apply(books).last.id, 'b');
+    expect(query.apply(books).first.id, 'b');
     query
       ..tag = 'fiction'
       ..series = 'S'

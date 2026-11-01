@@ -344,10 +344,15 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
       final bytes = await capture.toByteData(format: ui.ImageByteFormat.png);
       capture.dispose();
       if (!mounted) return;
-      await context.read<LibraryModel>().storage.saveExport(
+      final path = await context.read<LibraryModel>().storage.saveExport(
         'reading-${widget.year}.png',
         bytes!.buffer.asUint8List(),
       );
+      if (path != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Year in Review image saved.')),
+        );
+      }
     } catch (_) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -369,10 +374,38 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
     );
     return Scaffold(
       appBar: AppBar(title: const Text('Year in Review')),
-      body: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          RepaintBoundary(
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Save a PNG image to a folder on your phone.',
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  key: const ValueKey('save-year-review'),
+                  onPressed: _busy ? null : _export,
+                  icon: const Icon(Icons.download_outlined),
+                  label: Text(_busy ? 'Making image…' : 'Save image to phone'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      body: SafeArea(
+        top: false,
+        bottom: false,
+        child: SingleChildScrollView(
+          key: const ValueKey('year-review-scroll'),
+          padding: const EdgeInsets.all(20),
+          child: RepaintBoundary(
             key: _boundary,
             child: ColoredBox(
               color: context.c.ground,
@@ -418,12 +451,7 @@ class _YearReviewScreenState extends State<YearReviewScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: _busy ? null : _export,
-            child: Text(_busy ? 'Making image…' : 'Export image'),
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -66,6 +66,8 @@ Future<void> exerciseReadingFlow(
   await reveal(tester, find.text('Start reading'));
   await tester.tap(find.text('Start reading'));
   await tester.pumpAndSettle();
+  await tester.tap(find.text('Continue'));
+  await tester.pumpAndSettle();
   await tester.tap(find.text('OK'));
   await tester.pumpAndSettle();
   await waitFor(tester, () => library.reading.isNotEmpty);

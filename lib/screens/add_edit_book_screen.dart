@@ -12,6 +12,7 @@ import '../services/theme_notifier.dart';
 import '../theme/tokens.dart';
 import '../widgets/ledger.dart';
 import '../widgets/read_dates.dart';
+import '../widgets/read_format_fields.dart';
 import 'cover_crop_screen.dart';
 
 class AddEditBookScreen extends StatefulWidget {
@@ -51,7 +52,7 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
       'Why I dropped it': b?.dropReason ?? '',
       'Audio duration (h:mm)': b?.totalMinutes == null
           ? ''
-          : b!.progressLabel(b.totalMinutes!),
+          : formatReadLength(BookFormat.audiobook, b!.totalMinutes),
     };
     for (final e in values.entries) {
       _fields[e.key] = TextEditingController(text: e.value);
@@ -181,6 +182,10 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
           id: const Uuid().v4(),
           startDate: _start,
           precision: _precision,
+          format: _format,
+          totalLength: _format == BookFormat.audiobook
+              ? b.totalMinutes
+              : b.totalPages,
         ),
       );
     } else if (_status == BookStatus.reading) {
@@ -195,13 +200,26 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
     if (_status == BookStatus.read) {
       final target = b.openSession ?? sessions.lastOrNull;
       final closed =
-          (target ?? ReadingSession(id: const Uuid().v4(), startDate: _start))
+          (target ??
+                  ReadingSession(
+                    id: const Uuid().v4(),
+                    startDate: _start,
+                    format: _format,
+                    totalLength: _format == BookFormat.audiobook
+                        ? b.totalMinutes
+                        : b.totalPages,
+                  ))
               .copyWith(
                 startDate: _start,
                 endDate: _end,
                 rating: _rating,
                 precision: _precision,
-                currentPage: b.progressTotal ?? target?.currentPage ?? 0,
+                currentPage: target != null
+                    ? target.totalLength ?? target.currentPage
+                    : (_format == BookFormat.audiobook
+                              ? b.totalMinutes
+                              : b.totalPages) ??
+                          0,
               );
       if (target == null) {
         sessions.add(closed);
@@ -304,7 +322,14 @@ class _AddEditBookScreenState extends State<AddEditBookScreen> {
           DropdownButtonFormField<BookFormat>(
             isExpanded: true,
             initialValue: _format,
-            decoration: const InputDecoration(labelText: 'Format'),
+            decoration: InputDecoration(
+              labelText: widget.book == null
+                  ? 'Format for first read'
+                  : 'Default format for new reads',
+              helperText: widget.book == null
+                  ? null
+                  : 'Change each read’s format in reading history.',
+            ),
             items: BookFormat.values
                 .map((f) => DropdownMenuItem(value: f, child: Text(f.label)))
                 .toList(),

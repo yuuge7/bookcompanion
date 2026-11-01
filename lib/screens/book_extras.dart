@@ -201,9 +201,11 @@ class BookExtras extends StatelessWidget {
             (p) => ListTile(
               contentPadding: EdgeInsets.zero,
               title: Text(
-                '${book.isAudio ? 'Time' : 'Page'} ${book.progressLabel(p.page)}',
+                '${s.isAudio ? 'Time' : 'Page'} ${s.progressLabel(p.page)}',
               ),
-              subtitle: Text(p.date.toLocal().toString().split('.').first),
+              subtitle: Text(
+                '${s.format!.label} · ${p.date.toLocal().toString().split('.').first}',
+              ),
             ),
           ),
         ),

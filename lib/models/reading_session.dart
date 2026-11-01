@@ -1,3 +1,5 @@
+import 'book_format.dart';
+
 enum DatePrecision { exact, approximate, unknown }
 
 extension DatePrecisionLabel on DatePrecision {
@@ -51,6 +53,8 @@ class ReadingSession {
     this.rating,
     this.currentPage = 0,
     this.precision = DatePrecision.exact,
+    this.format,
+    this.totalLength,
     DateTime? createdAt,
     DateTime? updatedAt,
     List<ProgressEntry> progress = const [],
@@ -63,6 +67,16 @@ class ReadingSession {
   final int? rating;
   final int currentPage;
   final DatePrecision precision;
+
+  /// Null only for legacy reads; Book fills these from its edition on load.
+  final BookFormat? format;
+
+  /// Pages for print/ebook, minutes for audio.
+  final int? totalLength;
+  bool get isAudio => format == BookFormat.audiobook;
+  String progressLabel(int value) => isAudio
+      ? '${value ~/ 60}:${(value % 60).toString().padLeft(2, '0')}'
+      : '$value';
   final DateTime createdAt;
   final DateTime updatedAt;
   final List<ProgressEntry> progress;
@@ -81,6 +95,8 @@ class ReadingSession {
     Object? rating = unset,
     int? currentPage,
     DatePrecision? precision,
+    BookFormat? format,
+    Object? totalLength = unset,
     DateTime? updatedAt,
     List<ProgressEntry>? progress,
   }) => ReadingSession(
@@ -90,6 +106,10 @@ class ReadingSession {
     rating: identical(rating, unset) ? this.rating : rating as int?,
     currentPage: currentPage ?? this.currentPage,
     precision: precision ?? this.precision,
+    format: format ?? this.format,
+    totalLength: identical(totalLength, unset)
+        ? this.totalLength
+        : totalLength as int?,
     createdAt: createdAt,
     updatedAt: updatedAt ?? DateTime.now(),
     progress: progress ?? this.progress,
@@ -101,6 +121,8 @@ class ReadingSession {
     'rating': rating,
     'currentPage': currentPage,
     'precision': precision.name,
+    'format': format?.name,
+    'totalLength': totalLength,
     'createdAt': createdAt.toUtc().toIso8601String(),
     'updatedAt': updatedAt.toUtc().toIso8601String(),
     'progress': progress.map((p) => p.toJson()).toList(),
@@ -116,6 +138,10 @@ class ReadingSession {
     precision: DatePrecision.values.byName(
       json['precision'] as String? ?? 'exact',
     ),
+    format: json['format'] == null
+        ? null
+        : BookFormat.values.byName(json['format'] as String),
+    totalLength: json['totalLength'] as int?,
     createdAt: json['createdAt'] == null
         ? parseStoredDate(json['startDate'] as String)
         : parseStoredDate(json['createdAt'] as String),

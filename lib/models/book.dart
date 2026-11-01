@@ -1,4 +1,6 @@
 import 'reading_session.dart';
+import 'book_format.dart';
+export 'book_format.dart';
 
 enum BookStatus { toRead, reading, read, onHold, dropped }
 
@@ -9,17 +11,6 @@ extension BookStatusLabel on BookStatus {
     BookStatus.read => 'Read',
     BookStatus.onHold => 'On Hold',
     BookStatus.dropped => 'Dropped',
-  };
-}
-
-enum BookFormat { paperback, hardcover, ebook, audiobook }
-
-extension BookFormatLabel on BookFormat {
-  String get label => switch (this) {
-    BookFormat.paperback => 'Paperback',
-    BookFormat.hardcover => 'Hardcover',
-    BookFormat.ebook => 'Ebook',
-    BookFormat.audiobook => 'Audiobook',
   };
 }
 
@@ -61,7 +52,19 @@ class Book {
     DateTime? createdAt,
     DateTime? updatedAt,
     this.deletedAt,
-  }) : sessions = List.unmodifiable(sessions),
+  }) : sessions = List.unmodifiable(
+         sessions.map(
+           (s) => s.format != null
+               ? s
+               : s.copyWith(
+                   format: format,
+                   totalLength: format == BookFormat.audiobook
+                       ? totalMinutes
+                       : totalPages,
+                   updatedAt: s.updatedAt,
+                 ),
+         ),
+       ),
        tags = List.unmodifiable(tags),
        quotes = List.unmodifiable(quotes),
        createdAt = createdAt ?? DateTime.now(),
@@ -86,8 +89,16 @@ class Book {
   final List<BookQuote> quotes;
   final DateTime createdAt, updatedAt;
   final DateTime? deletedAt;
-  bool get isAudio => format == BookFormat.audiobook;
-  int? get progressTotal => isAudio ? totalMinutes : totalPages;
+  BookFormat get currentFormat =>
+      openSession?.format ?? sessions.lastOrNull?.format ?? format;
+  bool get isAudio => currentFormat == BookFormat.audiobook;
+  int? get progressTotal => openSession != null
+      ? openSession!.totalLength
+      : sessions.isNotEmpty
+      ? sessions.last.totalLength
+      : isAudio
+      ? totalMinutes
+      : totalPages;
   String get progressUnit => isAudio ? 'minutes' : 'pages';
   String progressLabel(int value) => isAudio
       ? '${value ~/ 60}:${(value % 60).toString().padLeft(2, '0')}'
@@ -100,9 +111,20 @@ class Book {
       .where((s) => !s.isOpen)
       .map((s) => s.endDate!)
       .fold<DateTime?>(null, (a, b) => a == null || b.isAfter(a) ? b : a);
-  DateTime get lastRead => sessions
-      .map((s) => s.updatedAt)
-      .fold(createdAt, (a, b) => b.isAfter(a) ? b : a);
+  DateTime? get lastRead {
+    DateTime? latest;
+    for (final s in sessions) {
+      final dates = [
+        if (s.precision != DatePrecision.unknown) s.endDate ?? s.startDate,
+        ...s.progress.map((p) => p.date),
+      ];
+      for (final date in dates) {
+        if (latest == null || date.isAfter(latest)) latest = date;
+      }
+    }
+    return latest;
+  }
+
   double get progress => status == BookStatus.read
       ? 1
       : (progressTotal == null

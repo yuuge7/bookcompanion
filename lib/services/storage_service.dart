@@ -178,6 +178,9 @@ class StorageService {
         fail('more than one open reading session.');
       }
       for (final s in b.sessions) {
+        if (s.totalLength != null && s.totalLength! <= 0) {
+          fail('read length must be positive.');
+        }
         if (s.id.isEmpty || !sessionIds.add(s.id)) {
           fail('duplicate or missing session id.');
         }
@@ -188,14 +191,14 @@ class StorageService {
           fail('rating must be between 1 and 5.');
         }
         if (s.currentPage < 0 ||
-            (b.progressTotal != null && s.currentPage > b.progressTotal!)) {
+            (s.totalLength != null && s.currentPage > s.totalLength!)) {
           fail('progress exceeds the book length.');
         }
         DateTime? previous;
         for (final p in s.progress) {
           if (p.page < 0 ||
               (p.fromPage != null && p.fromPage! < 0) ||
-              (b.progressTotal != null && p.page > b.progressTotal!) ||
+              (s.totalLength != null && p.page > s.totalLength!) ||
               (previous != null && p.date.isBefore(previous))) {
             fail('invalid progress log.');
           }
@@ -203,13 +206,19 @@ class StorageService {
         }
       }
       final quoteIds = <String>{};
+      final knownLengths = [
+        b.totalPages,
+        b.totalMinutes,
+        ...b.sessions.map((s) => s.totalLength),
+      ].nonNulls.toList();
       for (final q in b.quotes) {
         if (q.id.isEmpty ||
             !quoteIds.add(q.id) ||
             q.text.trim().isEmpty ||
             (q.page != null &&
                 (q.page! < 0 ||
-                    (b.progressTotal != null && q.page! > b.progressTotal!)))) {
+                    (knownLengths.isNotEmpty &&
+                        knownLengths.every((length) => q.page! > length))))) {
           fail('invalid quote or quote location.');
         }
       }

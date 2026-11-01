@@ -25,6 +25,7 @@ class ReadingStats {
                     s.endDate!.year == year));
         if (completed) {
           completedReads++;
+          formats.update(s.format!.label, (n) => n + 1, ifAbsent: () => 1);
           matchedBook = true;
           if (pass > 0) rereads++;
           if (s.precision != DatePrecision.unknown) {
@@ -41,15 +42,15 @@ class ReadingStats {
         if (s.progress.isEmpty) {
           final amount = s.isOpen
               ? s.currentPage
-              : b.progressTotal ?? s.currentPage;
+              : s.totalLength ?? s.currentPage;
           if (year == null || completed) {
-            if (b.isAudio) {
+            if (s.isAudio) {
               minutes += amount;
             } else {
               pages += amount;
             }
             if (completed &&
-                !b.isAudio &&
+                !s.isAudio &&
                 s.precision != DatePrecision.unknown) {
               pagesByMonth[s.endDate!.month - 1] += amount;
             }
@@ -59,7 +60,7 @@ class ReadingStats {
           // Before progress logging existed, this known baseline belongs in
           // all-time totals only, not in a guessed year or day.
           if (year == null) {
-            if (b.isAudio) {
+            if (s.isAudio) {
               minutes += high;
             } else {
               pages += high;
@@ -73,7 +74,7 @@ class ReadingStats {
               continue;
             }
             activeDays.add(calendarDay(entry.date));
-            if (b.isAudio) {
+            if (s.isAudio) {
               minutes += delta;
             } else {
               pages += delta;
@@ -95,7 +96,6 @@ class ReadingStats {
         for (final tag in b.tags) {
           tags.update(tag, (n) => n + 1, ifAbsent: () => 1);
         }
-        formats.update(b.format.label, (n) => n + 1, ifAbsent: () => 1);
       }
     }
     averageRating = rated.isEmpty

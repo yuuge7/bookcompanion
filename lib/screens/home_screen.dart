@@ -7,6 +7,7 @@ import '../services/library_query.dart';
 import '../theme/tokens.dart';
 import '../widgets/book_row.dart';
 import '../widgets/ledger.dart';
+import '../widgets/library_filters.dart';
 import '../widgets/set_page_dialog.dart';
 import 'add_edit_book_screen.dart';
 import 'backup_screen.dart';
@@ -25,7 +26,7 @@ class _HomeScreenState extends State<HomeScreen>
   late final TabController _tabs = TabController(length: 5, vsync: this)
     ..addListener(_refresh);
   final _search = TextEditingController();
-  final _query = LibraryQuery();
+  var _query = LibraryQuery();
   final _selected = <String>{};
   static const _statuses = [
     BookStatus.reading,
@@ -208,6 +209,7 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ),
                     IconButton(
+                      key: const ValueKey('library-filters'),
                       tooltip: _query.hasFilters
                           ? 'Filters active'
                           : 'Sort and filter',
@@ -232,25 +234,40 @@ class _HomeScreenState extends State<HomeScreen>
                   ],
                   counts: _statuses
                       .map(
-                        (s) => library.books.where((b) => b.status == s).length,
+                        (s) => _query
+                            .apply(
+                              library.books
+                                  .where((b) => b.status == s)
+                                  .toList(),
+                            )
+                            .length,
                       )
                       .toList(),
                 ),
               ),
-              if (_query.hasFilters)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: TextButton(
-                    onPressed: () => setState(() {
-                      _query.tag = null;
-                      _query.series = null;
-                      _query.format = null;
-                      _query.finishedYear = null;
-                      _query.rating = null;
-                    }),
-                    child: const Text('Clear active filters'),
-                  ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          alignment: Alignment.centerLeft,
+                        ),
+                        onPressed: () => _filters(library),
+                        child: Text(
+                          '${_query.sort.label} · ${_query.descending ? _query.sort.descendingLabel : _query.sort.ascendingLabel}',
+                        ),
+                      ),
+                    ),
+                    if (_query.hasFilters)
+                      TextButton(
+                        onPressed: () => setState(_query.clearFilters),
+                        child: const Text('Clear filters'),
+                      ),
+                  ],
                 ),
+              ),
               Expanded(
                 child: TabBarView(
                   controller: _tabs,
@@ -343,115 +360,16 @@ class _HomeScreenState extends State<HomeScreen>
   }
 
   Future<void> _filters(LibraryModel library) async {
-    final tags = library.books.expand((b) => b.tags).toSet().toList()..sort();
-    final series =
-        library.books
-            .map((b) => b.series)
-            .where((s) => s.isNotEmpty)
-            .toSet()
-            .toList()
-          ..sort();
-    final years =
-        library.books
-            .expand((b) => b.sessions)
-            .where((s) => s.endDate != null && s.precision.name != 'unknown')
-            .map((s) => s.endDate!.year)
-            .toSet()
-            .toList()
-          ..sort((a, b) => b.compareTo(a));
-    await showModalBottomSheet<void>(
+    final result = await showModalBottomSheet<LibraryQuery>(
       context: context,
       isScrollControlled: true,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, update) => SafeArea(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const SectionHeading('sort & filter'),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<LibrarySort>(
-                  isExpanded: true,
-                  initialValue: _query.sort,
-                  decoration: const InputDecoration(labelText: 'Sort by'),
-                  items: LibrarySort.values
-                      .map(
-                        (s) => DropdownMenuItem(value: s, child: Text(s.label)),
-                      )
-                      .toList(),
-                  onChanged: (s) => update(() => _query.sort = s!),
-                ),
-                SwitchListTile(
-                  title: const Text('Descending order'),
-                  value: _query.descending,
-                  onChanged: (v) => update(() => _query.descending = v),
-                ),
-                _filterDrop<String>(
-                  'Tag / genre',
-                  _query.tag,
-                  tags,
-                  (s) => s,
-                  (s) => update(() => _query.tag = s),
-                ),
-                _filterDrop<BookFormat>(
-                  'Format',
-                  _query.format,
-                  BookFormat.values,
-                  (f) => f.label,
-                  (f) => update(() => _query.format = f),
-                ),
-                _filterDrop<int>(
-                  'Year finished',
-                  _query.finishedYear,
-                  years,
-                  (y) => '$y',
-                  (y) => update(() => _query.finishedYear = y),
-                ),
-                _filterDrop<int>(
-                  'Rating (rounded average)',
-                  _query.rating,
-                  [1, 2, 3, 4, 5],
-                  (r) => '$r stars',
-                  (r) => update(() => _query.rating = r),
-                ),
-                _filterDrop<String>(
-                  'Series',
-                  _query.series,
-                  series,
-                  (s) => s,
-                  (s) => update(() => _query.series = s),
-                ),
-                FilledButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Apply'),
-                ),
-              ],
-            ),
-          ),
-        ),
+      useSafeArea: true,
+      builder: (_) => LibraryFilters(
+        query: _query,
+        books: library.books,
+        shelf: _statuses[_tabs.index],
       ),
     );
-    if (mounted) setState(() {});
+    if (result != null && mounted) setState(() => _query = result);
   }
-
-  Widget _filterDrop<T>(
-    String label,
-    T? value,
-    List<T> values,
-    String Function(T) name,
-    ValueChanged<T?> change,
-  ) => Padding(
-    padding: const EdgeInsets.only(bottom: 12),
-    child: DropdownButtonFormField<T>(
-      isExpanded: true,
-      initialValue: value,
-      decoration: InputDecoration(labelText: label),
-      items: [
-        DropdownMenuItem<T>(value: null, child: const Text('All')),
-        ...values.map((v) => DropdownMenuItem(value: v, child: Text(name(v)))),
-      ],
-      onChanged: change,
-    ),
-  );
 }

@@ -8,7 +8,9 @@ choose to export a file. Inspired by
 ## Reading
 
 - Reading, To Read, Read, On Hold, and Dropped shelves, with live counts.
-- Each read and reread has its own dates, date precision, rating, and progress.
+- Each read and reread has its own format, length, dates, date precision, rating,
+  and progress. Choose paperback, hardcover, ebook, or audiobook when starting;
+  edit an open read’s format or a completed read from its history entry.
   Exact, month-only, and unknown dates remain distinct. Unknown dates count in
   all-time totals without being assigned to a guessed year.
 - Paperback, hardcover, ebook, and audiobook editions. Audio progress uses
@@ -19,8 +21,10 @@ choose to export a file. Inspired by
 - Dated progress history, pace, estimated finish, and activity streaks.
 - Accent-insensitive search with small typo tolerance across title, author,
   subtitle, ISBN, publisher, notes, series, tags, and quotes.
-- Sort by title, author, date added, last read, rating, or progress. Filter by
-  tag, format, finish year, rating, and series.
+- Sort in either direction by title, author, date added, last read, last edited,
+  rating, or progress. Last read follows reading dates and progress activity.
+  Preview combined filters by tag, any read’s format, finish year, rating, and
+  series before applying them. Clear filters or select All to remove them.
 - Long-press a row to select books and change their shelf, tag, or trash them.
   Delete offers Undo; Settings → Trash can restore books for 30 days. Expired
   trash is removed on the next load/save. Unused managed covers are cleaned up.
@@ -61,8 +65,11 @@ make a complete backup.
 
 Stats supports a year selector and all-time totals, monthly books/pages charts,
 rating distribution, top authors/tags, format split, listening time, reading
-goals in books or pages, and progress-based streaks. Year in Review exports a PNG
-made on-device. Historic reads without logs contribute known pages to their
+goals in books or pages, and progress-based streaks. Format totals count each
+completed read; audio minutes and pages stay separate across mixed-format rereads.
+Year in Review scrolls through the full card and keeps **Save image to phone**
+visible above system navigation. It exports a PNG made on-device through the
+phone’s folder picker and confirms a successful save. Historic reads without logs contribute known pages to their
 finish month; daily activity comes only from real progress entries. Approximate
 and unknown dates never invent daily streaks.
 
